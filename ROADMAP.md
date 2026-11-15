@@ -21,6 +21,9 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.4.1: fixes the settings staying locked after you tap a language off (the warm microphone
+  counted as listening); Mic off button; v2 + v3 signing, no cloud backup, no cleartext traffic;
+  PRIVACY.md and SECURITY.md with the signing fingerprint.
 - 0.4.0: speech model loads when the app opens with a status line; the microphone stays warm
   between turns of a tap conversation (closes after 45 s idle); screen kept on while listening;
   microphone released in the background; "Open settings" after a refused permission; bubbles:

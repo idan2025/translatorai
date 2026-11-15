@@ -357,6 +357,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (choice == null) return;
+    await settle();
     setState(() {
       switch (which) {
         case 'mine':
@@ -454,11 +455,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await SystemNavigator.pop();
   }
 
-  void swap() => setState(() {
-        final m = live.mine;
-        live.mine = widget.settings.mine = live.theirs;
-        live.theirs = widget.settings.theirs = m;
-      });
+  /// Really listening: a side is tapped, or Listen / auto mode is running.
+  /// A tap conversation waiting between turns (microphone ready, nobody
+  /// speaking) is not busy, so the mode and languages stay changeable.
+  bool get busy => listeningBusy(running: live.running, tapMode: live.tapMode, side: live.side);
+
+  /// Closes a microphone that is only waiting, before a setting changes under it.
+  Future<void> settle() async {
+    if (live.running && !busy) await live.stop();
+  }
+
+  Future<void> swap() async {
+    await settle();
+    setState(() {
+      final m = live.mine;
+      live.mine = widget.settings.mine = live.theirs;
+      live.theirs = widget.settings.theirs = m;
+    });
+  }
 
   /// Marks the hardware route as "being tried" for the crash guard, then starts.
   AsrConfig startConfig() {
@@ -504,7 +518,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final locked = live.running;
+    final locked = busy;
     return Scaffold(
       appBar: AppBar(
         title: const Text('TranslatorAI'),
@@ -547,7 +561,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     leadingIcon: Icon(live.autoSpeaker ? Icons.check_box : Icons.check_box_outline_blank),
                     onPressed: locked
                         ? null
-                        : () => setState(() => live.autoSpeaker = widget.settings.autoSpeaker = !live.autoSpeaker),
+                        : () async {
+                            await settle();
+                            setState(() => live.autoSpeaker = widget.settings.autoSpeaker = !live.autoSpeaker);
+                          },
                     child: const Text('Conversation: detect who speaks (slower)'),
                   ),
                   MenuItemButton(
@@ -585,7 +602,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             selected: {live.mode},
             onSelectionChanged: locked
                 ? null
-                : (s) {
+                : (s) async {
+                    await settle();
                     setState(() => live.mode = widget.settings.mode = s.first);
                     if (s.first == Mode.conversation) _prepare([live.theirs]);
                   },
@@ -688,15 +706,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 Icon(live.phase == 'missed' ? Icons.hearing_disabled : Icons.graphic_eq,
                     size: 16, color: live.phase == 'hearing' ? cs.primary : cs.outline),
               const SizedBox(width: 8),
-              Text(
-                switch (live.phase) {
-                  'hearing' => 'Hearing you…',
-                  'decoding' => 'Writing it down…',
-                  'missed' => "Didn't catch that. Try again, a little closer.",
-                  _ => live.tapMode && live.side == null ? 'Tap a language to speak' : 'Listening',
-                },
-                style: Theme.of(context).textTheme.labelMedium,
+              Expanded(
+                child: Text(
+                  switch (live.phase) {
+                    'hearing' => 'Hearing you…',
+                    'decoding' => 'Writing it down…',
+                    'missed' => "Didn't catch that. Try again, a little closer.",
+                    _ => live.tapMode && live.side == null ? 'Tap a language to speak' : 'Listening',
+                  },
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
               ),
+              if (!busy)
+                TextButton.icon(
+                  onPressed: live.stop,
+                  icon: const Icon(Icons.mic_off, size: 16),
+                  label: const Text('Mic off'),
+                ),
             ]),
           ),
         SafeArea(

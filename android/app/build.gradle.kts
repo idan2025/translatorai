@@ -47,6 +47,13 @@ android {
                 storePassword = releaseKey.getProperty("storePassword")
                 keyAlias = releaseKey.getProperty("keyAlias")
                 keyPassword = releaseKey.getProperty("keyPassword")
+                // modern signature schemes: v3 allows the key to be rotated later without
+                // stranding installed copies (v1 is not needed from minSdk 24; v4 only
+                // applies to streamed installs and writes a separate file)
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = false
             }
         }
     }

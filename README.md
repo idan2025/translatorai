@@ -90,6 +90,11 @@ deleted the next time the app starts. Releases are signed with the project's
 release key (kept outside the repo); Android installs an update only over a
 copy signed with the same key.
 
+## Trust
+
+Nothing you say leaves the phone ([PRIVACY.md](PRIVACY.md)). Releases are signed with a fixed key and
+the fingerprint is published so you can check a download ([SECURITY.md](SECURITY.md)).
+
 ## Layout
 
 - `lib/main.dart`: setup screen (model download), home screen, language picker

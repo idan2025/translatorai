@@ -95,6 +95,11 @@ int _editDistance(String a, String b) {
   return prev[b.length];
 }
 
+/// Whether settings must stay locked: really listening. A tap conversation
+/// waiting between turns (microphone ready, no side tapped) is not busy.
+bool listeningBusy({required bool running, required bool tapMode, String? side}) =>
+    running && !(tapMode && side == null);
+
 /// One line of the transcript.
 class Line {
   Line(this.heard, this.direction);

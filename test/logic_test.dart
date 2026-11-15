@@ -72,6 +72,15 @@ void main() {
     });
   });
 
+  group('locking', () {
+    test('settings lock only while really listening, not while a tap conversation waits for a tap', () {
+      expect(listeningBusy(running: false, tapMode: true), isFalse);
+      expect(listeningBusy(running: true, tapMode: true, side: 'mine'), isTrue, reason: 'a side is being heard');
+      expect(listeningBusy(running: true, tapMode: true, side: null), isFalse, reason: 'between turns: the bug in 0.4.0');
+      expect(listeningBusy(running: true, tapMode: false), isTrue, reason: 'Listen and auto mode keep the mic busy');
+    });
+  });
+
   group('echo and noise', () {
     test("the phone's own translation, heard back, is recognised as echo", () {
       final said = ['Доброе утро, как дела?', 'Where is the station?'];
