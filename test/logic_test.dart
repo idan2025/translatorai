@@ -8,29 +8,68 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:translatorai/src/asr.dart';
 import 'package:translatorai/src/languages.dart';
+import 'package:translatorai/src/lid.dart';
+import 'package:translatorai/src/updater.dart';
 import 'package:translatorai/src/model_store.dart';
 import 'package:translatorai/src/models.dart';
 import 'package:translatorai/src/pipeline.dart';
 
 void main() {
   group('direction', () {
-    test('listen sends everything into my language', () {
-      expect(decide(Mode.listen, 'ja', mine: 'en', theirs: 'es'), const Direction('ja', 'en'));
-      expect(decide(Mode.listen, 'en', mine: 'en', theirs: 'es'), const Direction('en', 'en'));
+    final g = FakeGuesser({'pausa': [Guess('it', .6), Guess('es', .3)], 'buenos dias': [Guess('es', .9)]});
+    test('listen with any language: the alphabet decides, then the identifier', () async {
+      expect(await direct(Mode.listen, 'доброе утро', g, mine: 'en', theirs: 'es'), const Direction('ru', 'en'));
+      expect(await direct(Mode.listen, 'מה זה נרסט', g, mine: 'en', theirs: 'es'), const Direction('he', 'en'));
+      expect(await direct(Mode.listen, 'buenos dias', g, mine: 'en', theirs: 'es'), const Direction('es', 'en'));
+      expect(await direct(Mode.listen, 'zzzz', g, mine: 'en', theirs: 'es'), const Direction('', 'en', guessed: true));
     });
-    test('conversation goes by the language heard', () {
-      expect(decide(Mode.conversation, 'en', mine: 'en', theirs: 'he'), const Direction('en', 'he'));
-      expect(decide(Mode.conversation, 'he', mine: 'en', theirs: 'he'), const Direction('he', 'en'));
+    test('listen with a pinned language never answers a third one', () async {
+      expect(await direct(Mode.listen, 'pausa', g, mine: 'en', theirs: 'es', listenFrom: 'ru'), const Direction('en', 'en'));
+      expect(await direct(Mode.listen, 'доброе утро', g, mine: 'en', theirs: 'es', listenFrom: 'ru'), const Direction('ru', 'en'));
     });
-    test('a third language is taken as the turn of whoever did not speak last', () {
-      expect(decide(Mode.conversation, 'yi', mine: 'en', theirs: 'he', lastFrom: 'he'),
-          const Direction('en', 'he', guessed: true));
-      expect(decide(Mode.conversation, 'yi', mine: 'en', theirs: 'he', lastFrom: 'en'),
-          const Direction('he', 'en', guessed: true));
+    test('a conversation only ever answers its two languages', () async {
+      expect(await direct(Mode.conversation, 'доброе утро', g, mine: 'en', theirs: 'ru'), const Direction('ru', 'en'));
+      expect(await direct(Mode.conversation, 'good morning', g, mine: 'en', theirs: 'ru'), const Direction('en', 'ru'));
+      // Hebrew letters in a Russian-English conversation fit neither side: turn-taking decides, marked as a guess
+      expect(await direct(Mode.conversation, 'מה זה', g, mine: 'en', theirs: 'ru', lastFrom: 'en'),
+          const Direction('ru', 'en', guessed: true));
+    });
+    test('two languages in one alphabet: the identifier picks between them only', () async {
+      expect(await direct(Mode.conversation, 'pausa', g, mine: 'en', theirs: 'es'), const Direction('es', 'en'));
+      // nothing known about the text: the side that did not speak last
+      expect(await direct(Mode.conversation, 'qwerty', g, mine: 'en', theirs: 'es', lastFrom: 'es'),
+          const Direction('en', 'es'));
+    });
+  });
+
+  group('alphabets', () {
+    test('scripts are told apart and Japanese wins over Chinese when kana appear', () {
+      expect(scriptOf('Привет'), Script.cyrillic);
+      expect(scriptOf('שלום'), Script.hebrew);
+      expect(scriptOf('مرحبا'), Script.arabic);
+      expect(scriptOf('你好'), Script.han);
+      expect(scriptOf('こんにちは世界'), Script.kana);
+      expect(scriptOf('안녕'), Script.hangul);
+      expect(scriptOf('Ça va'), Script.latin);
+      expect(scriptOf('123 ?'), Script.other);
+    });
+    test("ML Kit's legacy tags are mapped", () {
+      expect(normaliseTag('iw'), 'he');
+      expect(normaliseTag('ru-Latn'), 'ru');
+      expect(normaliseTag('fil'), 'tl');
     });
   });
 
   group('audio', () {
+    test('the ring cuts an utterance out with margins, by absolute sample index', () {
+      final r = AudioRing(10);
+      r.add(Float32List.fromList([0, 1, 2, 3, 4, 5, 6, 7]));
+      r.add(Float32List.fromList([8, 9, 10, 11]));
+      expect(r.slice(5, 9), [5, 6, 7, 8]);
+      expect(r.slice(0, 4), [2, 3], reason: 'only what is still held');
+      expect(r.slice(10, 99), [10, 11]);
+      expect(r.slice(20, 30), isNull);
+    });
     test('PCM16 becomes floats and an odd byte waits for the next chunk', () {
       final d = Pcm16Decoder();
       // 0x4000 = 16384 = 0.5; -0x4000 = 0xC000
@@ -56,8 +95,7 @@ void main() {
     test('every language has a name and the lists are unique', () {
       final codes = allLanguages().map((l) => l.code).toList();
       expect(codes.toSet().length, codes.length);
-      expect(whisperLanguages.length, 99);
-      expect(hearable.contains('he') && hearable.contains('ar') && hearable.contains('zh'), isTrue);
+      expect(knownLanguages.length, 99);
     });
   });
 
@@ -104,10 +142,94 @@ void main() {
 
     test('every shipped model file is pinned to a digest', () {
       for (final f in [vadModel, for (final m in speechModels) ...m.files]) {
+        expect(f.name, isNot(contains('/')));
         expect(f.sha256, matches(RegExp(r'^[0-9a-f]{64}$')), reason: f.name);
         expect(f.url, startsWith('https://'));
         expect(f.bytes, greaterThan(0));
       }
     });
   });
+
+  group('updates', () {
+    test('versions compare by number, a suffix before the release', () {
+      expect(compareVersions('v0.2.0', '0.1.0'), greaterThan(0));
+      expect(compareVersions('0.10.0', '0.9.9'), greaterThan(0));
+      expect(compareVersions('v0.2.0', '0.2.0'), 0);
+      expect(compareVersions('0.2.0-rc1', '0.2.0'), lessThan(0));
+    });
+
+    Map<String, dynamic> release(String tag, {bool draft = false, String? digest, bool shaFile = true}) => {
+          'tag_name': tag,
+          'draft': draft,
+          'body': 'notes $tag',
+          'html_url': 'https://github.com/x/$tag',
+          'assets': [
+            {
+              'name': 'translatorai-${tag.substring(1)}-android-arm64.apk',
+              'browser_download_url': 'https://dl/$tag.apk',
+              'size': 4,
+              if (digest != null) 'digest': 'sha256:$digest',
+            },
+            if (shaFile) {'name': 'translatorai-${tag.substring(1)}-android-arm64.apk.sha256', 'browser_download_url': 'https://dl/$tag.sha'},
+          ],
+        };
+
+    final apkBytes = [1, 2, 3, 4];
+    final apkSha = sha256.convert(apkBytes).toString();
+
+    test('the newest non-draft release with an APK is picked', () {
+      final p = pickRelease([release('v0.3.0', draft: true), release('v0.1.0'), release('v0.2.0')])!;
+      expect(p.release['tag_name'], 'v0.2.0');
+      expect(p.shaUrl, 'https://dl/v0.2.0.sha');
+    });
+
+    test('a newer release is offered with its digest, an older one is not', () async {
+      final c = MockClient((r) async => switch (r.url.toString()) {
+            releasesApi => http.Response(jsonEncode([release('v0.2.0', digest: apkSha)]), 200),
+            _ => http.Response('', 404),
+          });
+      final dir = Directory.systemTemp.createTempSync('upd-');
+      final u = Updater(dir: dir, client: c);
+      final got = await u.check('0.1.0');
+      expect(got!.version, '0.2.0');
+      expect(got.sha256, apkSha);
+      expect(await u.check('0.2.0'), isNull);
+      dir.deleteSync(recursive: true);
+    });
+
+    test('without a GitHub digest the published .sha256 file is used; with neither, nothing installs', () async {
+      final c = MockClient((r) async => switch (r.url.toString()) {
+            releasesApi => http.Response(jsonEncode([release('v0.2.0')]), 200),
+            'https://dl/v0.2.0.sha' => http.Response('$apkSha  translatorai-0.2.0-android-arm64.apk\n', 200),
+            _ => http.Response('', 404),
+          });
+      final dir = Directory.systemTemp.createTempSync('upd-');
+      expect((await Updater(dir: dir, client: c).check('0.1.0'))!.sha256, apkSha);
+      final bare = MockClient((r) async => http.Response(jsonEncode([release('v0.2.0', shaFile: false)]), 200));
+      await expectLater(Updater(dir: dir, client: bare).check('0.1.0'), throwsA(isA<UpdateError>()));
+      dir.deleteSync(recursive: true);
+    });
+
+    test('a download that does not match is deleted; a match is kept; clean-up empties the folder', () async {
+      final dir = Directory.systemTemp.createTempSync('upd-');
+      final good = Update(version: '0.2.0', apkUrl: 'https://dl/a', apkName: 'a.apk', bytes: 4, sha256: apkSha, notes: '', page: '');
+      final ok = Updater(dir: dir, client: MockClient((_) async => http.Response.bytes(apkBytes, 200)));
+      final f = await ok.download(good);
+      expect(f.readAsBytesSync(), apkBytes);
+      final bad = Updater(dir: dir, client: MockClient((_) async => http.Response.bytes([9, 9, 9, 9], 200)));
+      await expectLater(bad.download(Update(version: '0.2.0', apkUrl: 'https://dl/b', apkName: 'b.apk', bytes: 4,
+          sha256: apkSha, notes: '', page: '')), throwsA(isA<UpdateError>()));
+      expect(File('${dir.path}/b.apk').existsSync() || File('${dir.path}/b.apk.part').existsSync(), isFalse);
+      expect(await ok.cleanUp(), 1);
+      expect(dir.listSync(), isEmpty);
+      dir.deleteSync(recursive: true);
+    });
+  });
+}
+
+class FakeGuesser extends TextLanguageGuesser {
+  FakeGuesser(this.answers);
+  final Map<String, List<Guess>> answers;
+  @override
+  Future<List<Guess>> guess(String text) async => answers[text] ?? const [];
 }

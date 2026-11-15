@@ -8,13 +8,20 @@
 - Listen and Conversation modes; voice through the phone's TTS into any earbuds.
 - Pinned, digest-checked model downloads; one-time, then offline.
 
+## Done (v0.2)
+
+- Omnilingual ASR (1,600 languages) instead of Whisper; language told from the
+  text, limited to the chosen pair. Fixes Russian heard as Polish/Hebrew.
+- Listen mode can pin the spoken language.
+- Settings submenu: speech model, check for updates, about, exit.
+- Checked in-app updates from GitHub releases; release signing key.
+
 ## Not verified yet
 
-- **On a real phone.** Built (`app-arm64-v8a-release.apk`) but not run: no
-  device or KVM emulator on the build machine. First run checks: microphone
-  permission, model download, latency per sentence, echo (the app mutes the
-  microphone while it speaks), Bluetooth earbuds output.
-- Non-English language detection with real speech (only English was measured).
+- v0.2 on a real phone: Omnilingual latency and memory (1B needs a recent
+  phone), the text language identifier on short phrases, the update flow end to
+  end (first update from 0.2 to a later release).
+- v0.1 was tried on a phone by the user: it ran; Whisper misheard languages (fixed in 0.2).
 
 ## Next
 
@@ -30,11 +37,14 @@
      per direction, and many pairs pivot through English.
    The engine is picked per pair: the best installed engine that has both
    languages wins, so adding one widens coverage without changing the rest.
-2. **Lower latency.** Streaming recognisers (sherpa-onnx streaming zipformer)
+2. **Hybrid recognition.** Whisper small/turbo is better than Omnilingual on
+   English (4.7% vs 12.2% words wrong): re-decode with Whisper, forced to the
+   language Omnilingual's text revealed, where Whisper is strong.
+3. **Lower latency.** Streaming recognisers (sherpa-onnx streaming zipformer)
    for the languages that have one, to show words while someone is still
    talking; Whisper stays the fallback for everything else.
-3. **Better voices offline.** Piper/VITS voices through sherpa-onnx TTS where
+4. **Better voices offline.** Piper/VITS voices through sherpa-onnx TTS where
    the phone has no voice for a language.
-4. **Face-to-face view.** Split screen, the other person's half upside down.
-5. **iOS.** All three libraries support it; needs a Mac to build.
-6. Release signing, store listing, an icon.
+5. **Face-to-face view.** Split screen, the other person's half upside down.
+6. **iOS.** All three libraries support it; needs a Mac to build.
+7. Store listing, an icon.

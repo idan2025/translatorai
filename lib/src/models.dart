@@ -3,28 +3,32 @@
 /// is refused rather than run.
 class ModelFile {
   const ModelFile(this.name, this.url, this.sha256, this.bytes);
+
+  /// The file's name on the phone (unique across models).
   final String name;
   final String url;
   final String sha256;
   final int bytes;
 }
 
+/// A speech recogniser. Omnilingual (Meta, Apache 2.0) writes what it hears
+/// in that language's own alphabet without guessing a language first, so it
+/// never "hears" Russian as Polish; the language is told from the text after.
 class SpeechModel {
-  const SpeechModel(this.id, this.label, this.note, this.files);
+  const SpeechModel(this.id, this.label, this.note, this.model, this.tokens);
   final String id;
   final String label;
   final String note;
-  final List<ModelFile> files;
+  final ModelFile model;
+  final ModelFile tokens;
 
-  int get bytes => files.fold(0, (a, f) => a + f.bytes);
-  String get encoder => files.firstWhere((f) => f.name.endsWith('encoder.int8.onnx')).name;
-  String get decoder => files.firstWhere((f) => f.name.endsWith('decoder.int8.onnx')).name;
-  String get tokens => files.firstWhere((f) => f.name.endsWith('tokens.txt')).name;
+  List<ModelFile> get files => [model, tokens];
+  int get bytes => model.bytes + tokens.bytes;
 }
 
 const _hf = 'https://huggingface.co/csukuangfj';
-const _tiny = '65176e2deb88badc814a94058666cadccc29b61c';
-const _base = 'bb53ee204431c90d314c1cc08d28d23e5b7927cc';
+const _omni300 = '$_hf/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/6abf1ece20cd2308bdb7d13cd78ec1c44fa4c094';
+const _omni1b = '$_hf/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-int8-2025-11-12/resolve/17db76eab583b0b868ffb0df104ab879145087e5';
 
 const vadModel = ModelFile(
   'silero_vad.onnx',
@@ -33,23 +37,27 @@ const vadModel = ModelFile(
   643854,
 );
 
+/// Both models share one vocabulary file (identical bytes).
+const _omniTokens = ModelFile('omni-tokens.txt', '$_omni300/tokens.txt',
+    'a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31', 86423);
+
 const speechModels = <SpeechModel>[
-  SpeechModel('whisper-tiny', 'Fast', 'Whisper tiny · 99 languages · ~100 MB · any phone', [
-    ModelFile('tiny-encoder.int8.onnx', '$_hf/sherpa-onnx-whisper-tiny/resolve/$_tiny/tiny-encoder.int8.onnx',
-        'd24fb083ae3b1041fc24e97971d60e280c9342201fbb67b0ab428a8b4a51a434', 12937772),
-    ModelFile('tiny-decoder.int8.onnx', '$_hf/sherpa-onnx-whisper-tiny/resolve/$_tiny/tiny-decoder.int8.onnx',
-        'd2fece8dd42771f1df975c6c0445770d0c292bf7547c2cae04a6c0cc57540925', 89855401),
-    ModelFile('tiny-tokens.txt', '$_hf/sherpa-onnx-whisper-tiny/resolve/$_tiny/tiny-tokens.txt',
-        'b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126', 816730),
-  ]),
-  SpeechModel('whisper-base', 'Accurate', 'Whisper base · 99 languages · ~160 MB · newer phones', [
-    ModelFile('base-encoder.int8.onnx', '$_hf/sherpa-onnx-whisper-base/resolve/$_base/base-encoder.int8.onnx',
-        '0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11', 29120534),
-    ModelFile('base-decoder.int8.onnx', '$_hf/sherpa-onnx-whisper-base/resolve/$_base/base-decoder.int8.onnx',
-        '9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d', 130672026),
-    ModelFile('base-tokens.txt', '$_hf/sherpa-onnx-whisper-base/resolve/$_base/base-tokens.txt',
-        'b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126', 816730),
-  ]),
+  SpeechModel(
+    'omni-300m',
+    'Standard',
+    'Omnilingual 300M · 1,600 languages · 365 MB · most phones',
+    ModelFile('omni-300m.int8.onnx', '$_omni300/model.int8.onnx',
+        'e7c4e54ee4c4c47829cc6667d5d00ed8ea7bef1dcfeef0fce766f77752a2726c', 365352120),
+    _omniTokens,
+  ),
+  SpeechModel(
+    'omni-1b',
+    'Best',
+    'Omnilingual 1B · 1,600 languages · 1 GB · recent phones with 6 GB+ RAM',
+    ModelFile('omni-1b.int8.onnx', '$_omni1b/model.int8.onnx',
+        'f7b74c964039162423b83e3fa950ce24810c9a635d9ff8468b5f4d142b7c1e8c', 1031628252),
+    _omniTokens,
+  ),
 ];
 
 SpeechModel speechModelById(String id) =>

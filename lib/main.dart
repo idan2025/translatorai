@@ -2,6 +2,8 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'src/asr.dart';
@@ -12,18 +14,28 @@ import 'src/pipeline.dart';
 import 'src/settings.dart';
 import 'src/speaker.dart';
 import 'src/translator.dart';
+import 'src/updater.dart';
+import 'src/lid.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final settings = await Settings.load();
   final dir = Directory('${(await getApplicationSupportDirectory()).path}/models');
-  runApp(TranslatorApp(settings: settings, store: ModelStore(dir)));
+  // must match res/xml/update_paths.xml: the cache's "updates" folder
+  final updater = Updater(dir: Directory('${(await getTemporaryDirectory()).path}/updates'));
+  // an APK left from the update that started this version, or an abandoned download
+  updater.cleanUp().ignore();
+  final info = await PackageInfo.fromPlatform();
+  runApp(TranslatorApp(settings: settings, store: ModelStore(dir), updater: updater, version: info.version));
 }
 
 class TranslatorApp extends StatelessWidget {
-  const TranslatorApp({super.key, required this.settings, required this.store});
+  const TranslatorApp(
+      {super.key, required this.settings, required this.store, required this.updater, required this.version});
   final Settings settings;
   final ModelStore store;
+  final Updater updater;
+  final String version;
 
   @override
   Widget build(BuildContext context) {
@@ -33,16 +45,18 @@ class TranslatorApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: seed, useMaterial3: true),
       darkTheme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.dark, useMaterial3: true),
-      home: Gate(settings: settings, store: store),
+      home: Gate(settings: settings, store: store, updater: updater, version: version),
     );
   }
 }
 
 /// Shows setup until the speech model is on the phone, then the translator.
 class Gate extends StatefulWidget {
-  const Gate({super.key, required this.settings, required this.store});
+  const Gate({super.key, required this.settings, required this.store, required this.updater, required this.version});
   final Settings settings;
   final ModelStore store;
+  final Updater updater;
+  final String version;
   @override
   State<Gate> createState() => _GateState();
 }
@@ -71,6 +85,8 @@ class _GateState extends State<Gate> {
       settings: widget.settings,
       store: widget.store,
       model: model,
+      updater: widget.updater,
+      version: widget.version,
       onChangeModel: () => setState(() => choosing = true),
     );
   }
@@ -175,9 +191,17 @@ class _SetupScreenState extends State<SetupScreen> {
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen(
-      {super.key, required this.settings, required this.store, required this.model, required this.onChangeModel});
+      {super.key,
+      required this.settings,
+      required this.store,
+      required this.model,
+      required this.updater,
+      required this.version,
+      required this.onChangeModel});
   final Settings settings;
   final ModelStore store;
+  final Updater updater;
+  final String version;
   final SpeechModel model;
   final VoidCallback onChangeModel;
   @override
@@ -193,10 +217,11 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     final s = widget.settings;
-    live = LiveTranslator(engine: MlKitEngine(), speaker: Speaker())
+    live = LiveTranslator(engine: MlKitEngine(), speaker: Speaker(), guesser: MlKitGuesser())
       ..mode = s.mode
       ..mine = s.mine
       ..theirs = s.theirs
+      ..listenFrom = s.listenFrom
       ..speak = s.speak;
     live.addListener(() {
       if (!mounted) return;
@@ -205,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
       });
     });
-    _prepare([live.mine, if (live.mode == Mode.conversation) live.theirs]);
+    _prepare([live.mine, if (live.mode == Mode.conversation) live.theirs, if (live.listenFrom.isNotEmpty) live.listenFrom]);
   }
 
   @override
@@ -217,9 +242,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   AsrConfig get asrConfig => AsrConfig(
         vad: widget.store.pathOf(vadModel.name),
-        encoder: widget.store.pathOf(widget.model.encoder),
-        decoder: widget.store.pathOf(widget.model.decoder),
-        tokens: widget.store.pathOf(widget.model.tokens),
+        model: widget.store.pathOf(widget.model.model.name),
+        tokens: widget.store.pathOf(widget.model.tokens.name),
         threads: math.min(4, math.max(1, Platform.numberOfProcessors ~/ 2)),
       );
 
@@ -239,28 +263,115 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => preparing = null);
   }
 
-  Future<void> pick({required bool mine}) async {
-    final current = mine ? live.mine : live.theirs;
-    // in Listen your language only has to be written; in a conversation both sides are also heard
-    final needHear = !(mine && live.mode == Mode.listen);
+  /// [which]: 'mine', 'theirs', or 'from' (Listen's spoken language, which may be "any").
+  Future<void> pick(String which) async {
+    final current = switch (which) { 'mine' => live.mine, 'theirs' => live.theirs, _ => live.listenFrom };
     final choice = await showModalBottomSheet<Language>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => LanguagePicker(
         current: current,
-        allowed: (l) => live.engine.supports(l.code) && (!needHear || hearable.contains(l.code)),
+        allowAny: which == 'from',
+        allowed: (l) => live.engine.supports(l.code),
       ),
     );
     if (choice == null) return;
     setState(() {
-      if (mine) {
-        live.mine = widget.settings.mine = choice.code;
-      } else {
-        live.theirs = widget.settings.theirs = choice.code;
+      switch (which) {
+        case 'mine':
+          live.mine = widget.settings.mine = choice.code;
+        case 'theirs':
+          live.theirs = widget.settings.theirs = choice.code;
+        default:
+          live.listenFrom = widget.settings.listenFrom = choice.code;
       }
     });
-    _prepare([choice.code]);
+    if (choice.code.isNotEmpty) _prepare([choice.code]);
+  }
+
+  // ------------------------------------------------------------ settings
+
+  Future<void> checkForUpdates() async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(const SnackBar(content: Text('Checking for updates…'), duration: Duration(seconds: 2)));
+    Update? u;
+    try {
+      u = await widget.updater.check(widget.version);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      return;
+    }
+    if (!mounted) return;
+    if (u == null) {
+      messenger.showSnackBar(SnackBar(content: Text('You have the latest version (${widget.version}).')));
+      return;
+    }
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Version ${u!.version} is available'),
+        content: SingleChildScrollView(
+          child: Text('You have ${widget.version}. Download ${(u.bytes / 1e6).round()} MB and install?\n\n'
+              '${u.notes.trim()}'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Later')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Update')),
+        ],
+      ),
+    );
+    if (go != true || !mounted) return;
+    final progress = ValueNotifier<double?>(0);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Downloading update'),
+        content: ValueListenableBuilder<double?>(
+          valueListenable: progress,
+          builder: (_, v, _) => LinearProgressIndicator(value: v),
+        ),
+      ),
+    );
+    try {
+      final apk = await widget.updater.download(u, onProgress: (d, t) => progress.value = d / t);
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      await widget.updater.install(apk); // the file is deleted at the next start
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).maybePop();
+        messenger.showSnackBar(SnackBar(content: Text('$e')));
+      }
+    } finally {
+      progress.dispose();
+    }
+  }
+
+  void about() {
+    showAboutDialog(
+      context: context,
+      applicationName: 'TranslatorAI',
+      applicationVersion: widget.version,
+      applicationIcon: Icon(Icons.translate, size: 40, color: Theme.of(context).colorScheme.primary),
+      applicationLegalese: 'Free and open source. Speech is heard, translated and spoken on this phone; '
+          'the network is used only to download models and updates.',
+      children: [
+        const SizedBox(height: 16),
+        Text('Speech model: ${widget.model.note}'),
+        const SizedBox(height: 8),
+        const Text('Speech recognition: Meta Omnilingual ASR (Apache 2.0) via sherpa-onnx. '
+            'Voice detection: Silero VAD (MIT). Translation and language identification: Google ML Kit, on-device. '
+            "Voice: this phone's text-to-speech."),
+        const SizedBox(height: 8),
+        const SelectableText(releasesPage),
+      ],
+    );
+  }
+
+  Future<void> exitApp() async {
+    await live.stop();
+    await SystemNavigator.pop();
   }
 
   void swap() => setState(() {
@@ -290,14 +401,29 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: Icon(live.speak ? Icons.volume_up : Icons.volume_off),
             onPressed: () => setState(() => live.speak = widget.settings.speak = !live.speak),
           ),
-          PopupMenuButton<String>(
-            onSelected: (v) {
-              if (v == 'clear') live.clear();
-              if (v == 'model') widget.onChangeModel();
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(value: 'clear', child: Text('Clear transcript')),
-              PopupMenuItem(value: 'model', enabled: !locked, child: Text('Speech model: ${widget.model.label}')),
+          MenuAnchor(
+            builder: (_, menu, _) => IconButton(
+              tooltip: 'Menu',
+              icon: const Icon(Icons.more_vert),
+              onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+            ),
+            menuChildren: [
+              MenuItemButton(leadingIcon: const Icon(Icons.delete_sweep), onPressed: live.clear, child: const Text('Clear transcript')),
+              SubmenuButton(
+                leadingIcon: const Icon(Icons.settings),
+                menuChildren: [
+                  MenuItemButton(
+                    leadingIcon: const Icon(Icons.record_voice_over),
+                    onPressed: locked ? null : widget.onChangeModel,
+                    child: Text('Speech model: ${widget.model.label}'),
+                  ),
+                  MenuItemButton(
+                      leadingIcon: const Icon(Icons.system_update), onPressed: checkForUpdates, child: const Text('Check for updates')),
+                  MenuItemButton(leadingIcon: const Icon(Icons.info_outline), onPressed: about, child: const Text('About')),
+                  MenuItemButton(leadingIcon: const Icon(Icons.exit_to_app), onPressed: exitApp, child: const Text('Exit')),
+                ],
+                child: const Text('Settings'),
+              ),
             ],
           ),
         ],
@@ -323,14 +449,18 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.all(16),
           child: live.mode == Mode.listen
               ? Row(children: [
-                  const Expanded(child: _Chip(label: 'Any language', icon: Icons.auto_awesome)),
+                  Expanded(
+                      child: _Chip(
+                          label: live.listenFrom.isEmpty ? 'Any language' : nameOf(live.listenFrom),
+                          icon: live.listenFrom.isEmpty ? Icons.auto_awesome : null,
+                          onTap: locked ? null : () => pick('from'))),
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Icon(Icons.arrow_forward)),
-                  Expanded(child: _Chip(label: nameOf(live.mine), onTap: locked ? null : () => pick(mine: true))),
+                  Expanded(child: _Chip(label: nameOf(live.mine), onTap: locked ? null : () => pick('mine'))),
                 ])
               : Row(children: [
-                  Expanded(child: _Chip(label: nameOf(live.mine), onTap: locked ? null : () => pick(mine: true))),
+                  Expanded(child: _Chip(label: nameOf(live.mine), onTap: locked ? null : () => pick('mine'))),
                   IconButton(onPressed: locked ? null : swap, icon: const Icon(Icons.swap_horiz)),
-                  Expanded(child: _Chip(label: nameOf(live.theirs), onTap: locked ? null : () => pick(mine: false))),
+                  Expanded(child: _Chip(label: nameOf(live.theirs), onTap: locked ? null : () => pick('theirs'))),
                 ]),
         ),
         if (preparing != null)
@@ -438,7 +568,7 @@ class _LineView extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('${nameOf(d.from)}${d.guessed ? ' (guessed)' : ''} → ${nameOf(d.to)}', style: t.labelSmall),
           const SizedBox(height: 4),
-          Text(line.heard.text, style: t.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+          Text(sentenceCase(line.heard.text), style: t.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 6),
           if (line.pending)
             const LinearProgressIndicator()
@@ -453,8 +583,11 @@ class _LineView extends StatelessWidget {
 }
 
 class LanguagePicker extends StatefulWidget {
-  const LanguagePicker({super.key, required this.current, required this.allowed});
+  const LanguagePicker({super.key, required this.current, required this.allowed, this.allowAny = false});
   final String current;
+
+  /// Offer "Any language" (an empty code) first.
+  final bool allowAny;
   final bool Function(Language) allowed;
   @override
   State<LanguagePicker> createState() => _LanguagePickerState();
@@ -479,6 +612,14 @@ class _LanguagePickerState extends State<LanguagePicker> {
         ),
         Expanded(
           child: ListView(children: [
+            if (widget.allowAny && query.isEmpty)
+              ListTile(
+                leading: const Icon(Icons.auto_awesome),
+                title: const Text('Any language'),
+                subtitle: const Text('Told from what is said. Pick the language when you know it: more accurate.'),
+                trailing: widget.current.isEmpty ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(context, const Language('', 'Any language')),
+              ),
             for (final l in shown)
               ListTile(
                 enabled: widget.allowed(l),
@@ -493,3 +634,6 @@ class _LanguagePickerState extends State<LanguagePicker> {
     );
   }
 }
+
+/// The recogniser writes without capitals; start the sentence with one.
+String sentenceCase(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);

@@ -9,7 +9,7 @@ class Settings {
 
   static Future<Settings> load() async => Settings(await SharedPreferences.getInstance());
 
-  String get model => _p.getString('model') ?? 'whisper-tiny';
+  String get model => _p.getString('model') ?? 'omni-300m';
   set model(String v) => _p.setString('model', v);
 
   Mode get mode => _p.getString('mode') == 'conversation' ? Mode.conversation : Mode.listen;
@@ -20,6 +20,10 @@ class Settings {
 
   String get theirs => _p.getString('theirs') ?? 'es';
   set theirs(String v) => _p.setString('theirs', v);
+
+  /// Listen mode's spoken language; '' = any.
+  String get listenFrom => _p.getString('listenFrom') ?? '';
+  set listenFrom(String v) => _p.setString('listenFrom', v);
 
   bool get speak => _p.getBool('speak') ?? true;
   set speak(bool v) => _p.setBool('speak', v);

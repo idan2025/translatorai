@@ -5,6 +5,7 @@ import 'package:record/record.dart';
 
 import 'asr.dart';
 import 'languages.dart';
+import 'lid.dart';
 import 'speaker.dart';
 import 'translator.dart';
 
@@ -19,9 +20,11 @@ enum Mode {
 /// Which way one utterance goes.
 class Direction {
   const Direction(this.from, this.to, {this.guessed = false});
+
+  /// '' when the language could not be told.
   final String from, to;
 
-  /// The speech model's language was outside the pair, so the side was
+  /// The text fitted none of the expected languages, so the side was
   /// inferred from turn-taking.
   final bool guessed;
 
@@ -34,17 +37,27 @@ class Direction {
   String toString() => '$from→$to${guessed ? '?' : ''}';
 }
 
-/// Decides the direction of an utterance. Pure, so it is tested alone.
+/// Decides the direction of an utterance from its text.
 ///
-/// Listen: whatever was said, into [mine]. Conversation: the language heard
-/// picks the side; a short clip is sometimes heard as a third language, and
-/// then the speaker is taken to be the one who did not speak last.
-Direction decide(Mode mode, String heard, {required String mine, required String theirs, String? lastFrom}) {
-  if (mode == Mode.listen) return Direction(heard.isEmpty ? theirs : heard, mine, guessed: heard.isEmpty);
-  if (heard == mine) return Direction(mine, theirs);
-  if (heard == theirs) return Direction(theirs, mine);
-  final from = lastFrom == theirs ? mine : theirs;
-  return Direction(from, from == mine ? theirs : mine, guessed: true);
+/// Listen: into [mine]. With a spoken language pinned ([listenFrom]) only it
+/// and [mine] are considered, so a phrase can never come out as a third
+/// language; with "any language", the alphabet and then the text identifier
+/// decide. Conversation: only [mine] and [theirs] are considered; text that
+/// fits neither is taken as the turn of whoever did not speak last.
+Future<Direction> direct(Mode mode, String text, TextLanguageGuesser guesser,
+    {required String mine, required String theirs, String listenFrom = '', String? lastFrom}) async {
+  if (mode == Mode.listen) {
+    if (listenFrom.isNotEmpty) {
+      final id = await identify(text, guesser, among: {listenFrom, mine}, prefer: listenFrom);
+      return Direction(id ?? listenFrom, mine);
+    }
+    final id = await identify(text, guesser);
+    return Direction(id ?? '', mine, guessed: id == null);
+  }
+  final other = lastFrom == theirs ? mine : theirs;
+  final id = await identify(text, guesser, among: {mine, theirs}, prefer: other);
+  if (id != null) return Direction(id, id == mine ? theirs : mine);
+  return Direction(other, other == mine ? theirs : mine, guessed: true);
 }
 
 /// One line of the transcript.
@@ -60,14 +73,18 @@ class Line {
 /// Microphone → speech model → translation → voice, with the transcript as
 /// state for the UI.
 class LiveTranslator extends ChangeNotifier {
-  LiveTranslator({required this.engine, required this.speaker});
+  LiveTranslator({required this.engine, required this.speaker, required this.guesser});
 
   final TranslationEngine engine;
   final Speaker speaker;
+  final TextLanguageGuesser guesser;
 
   Mode mode = Mode.listen;
   String mine = 'en';
   String theirs = 'es';
+
+  /// Listen mode's spoken language; '' = any (told from the text).
+  String listenFrom = '';
   bool speak = true;
 
   final lines = <Line>[];
@@ -80,6 +97,7 @@ class LiveTranslator extends ChangeNotifier {
   StreamSubscription? _micSub, _heardSub, _errSub;
   final _decoder = Pcm16Decoder();
   Future<void> _queue = Future.value();
+  Future<void> _ids = Future.value();
   int _waiting = 0;
   DateTime _muteUntil = DateTime.fromMillisecondsSinceEpoch(0);
   String? _lastFrom;
@@ -147,19 +165,29 @@ class LiveTranslator extends ChangeNotifier {
   }
 
   void _onHeard(Heard h) {
-    final d = decide(mode, h.language, mine: mine, theirs: theirs, lastFrom: _lastFrom);
-    _lastFrom = d.from;
-    final line = Line(h, d);
-    lines.add(line);
-    notifyListeners();
-    _waiting++;
-    _queue = _queue.then((_) => _process(line)).whenComplete(() => _waiting--);
+    // Two queues, both in spoken order: telling the language is quick and
+    // shows the line at once; translating and speaking can lag behind it.
+    _ids = _ids.then((_) async {
+      final d = await direct(mode, h.text, guesser,
+          mine: mine, theirs: theirs, listenFrom: listenFrom, lastFrom: _lastFrom);
+      if (!d.guessed && d.from.isNotEmpty) _lastFrom = d.from;
+      final line = Line(h, d);
+      lines.add(line);
+      notifyListeners();
+      _waiting++;
+      _queue = _queue.then((_) => _process(line)).whenComplete(() => _waiting--);
+    }).catchError((Object e) {
+      error = '$e';
+      notifyListeners();
+    });
   }
 
   Future<void> _process(Line line) async {
     final d = line.direction;
     try {
-      if (d.from == d.to) {
+      if (d.from.isEmpty) {
+        line.problem = 'Could not tell which language this is. Pick the spoken language above.';
+      } else if (d.from == d.to) {
         line.translation = line.heard.text;
       } else if (!engine.supports(d.from)) {
         line.problem = '${nameOf(d.from)} cannot be translated on this device yet';
@@ -190,6 +218,7 @@ class LiveTranslator extends ChangeNotifier {
   void dispose() {
     stop();
     engine.close();
+    guesser.close();
     super.dispose();
   }
 }

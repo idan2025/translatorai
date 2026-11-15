@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -30,11 +32,28 @@ android {
         versionName = flutter.versionName
     }
 
+    // Release key lives outside the repo (~/.config/translatorai/key.properties, or
+    // TRANSLATORAI_KEY_PROPERTIES). In-app updates only install over a copy signed
+    // with the same key, so losing it strands every installed app. Without it
+    // (anyone else's checkout) the release build falls back to the debug key.
+    val keyFile = file(System.getenv("TRANSLATORAI_KEY_PROPERTIES")
+        ?: "${System.getProperty("user.home")}/.config/translatorai/key.properties")
+    val releaseKey = if (keyFile.exists()) Properties().apply { keyFile.inputStream().use { load(it) } } else null
+
+    signingConfigs {
+        if (releaseKey != null) {
+            create("release") {
+                storeFile = file(releaseKey.getProperty("storeFile"))
+                storePassword = releaseKey.getProperty("storePassword")
+                keyAlias = releaseKey.getProperty("keyAlias")
+                keyPassword = releaseKey.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseKey != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
 }

@@ -1,8 +1,8 @@
 /// Every language the app knows, and which stage can handle it.
 ///
-/// A language is usable as a *source* when the speech model can hear it, and
-/// as a *target* when the translation engine can write it. Any pair of those
-/// works: there is no fixed list of pairs.
+/// The speech model (Omnilingual, 1,600 languages) hears every language
+/// listed here, so a language is usable both ways as soon as the translation
+/// engine writes it. Any pair works: there is no fixed list of pairs.
 class Language {
   const Language(this.code, this.name);
 
@@ -20,8 +20,8 @@ class Language {
   String toString() => '$name ($code)';
 }
 
-/// The languages Whisper recognises (its multilingual vocabulary, 99 entries).
-const whisperLanguages = <Language>[
+/// Languages with a name in the app (Whisper's 99, which Omnilingual all covers).
+const knownLanguages = <Language>[
   Language('en', 'English'), Language('zh', 'Chinese'), Language('de', 'German'),
   Language('es', 'Spanish'), Language('ru', 'Russian'), Language('ko', 'Korean'),
   Language('fr', 'French'), Language('ja', 'Japanese'), Language('pt', 'Portuguese'),
@@ -57,21 +57,17 @@ const whisperLanguages = <Language>[
   Language('ba', 'Bashkir'), Language('jw', 'Javanese'), Language('su', 'Sundanese'),
 ];
 
-/// Languages a translation engine may write that the speech model cannot hear:
-/// usable as a target only.
-const writeOnlyLanguages = <Language>[Language('eo', 'Esperanto'), Language('ga', 'Irish')];
+/// More languages a translation engine writes, also heard by Omnilingual.
+const moreLanguages = <Language>[Language('eo', 'Esperanto'), Language('ga', 'Irish')];
 
-/// Codes the speech model can hear.
-final Set<String> hearable = {for (final l in whisperLanguages) l.code};
-
-/// Whisper's code for a language, from what it returns ("en", "<|en|>", " en").
+/// A recogniser's language tag ("en", "<|en|>", " en") as a plain code.
 String normaliseLanguageTag(String raw) {
   final t = raw.trim().replaceAll('<|', '').replaceAll('|>', '').toLowerCase();
   return t;
 }
 
 Language? languageByCode(String code) {
-  for (final l in [...whisperLanguages, ...writeOnlyLanguages]) {
+  for (final l in [...knownLanguages, ...moreLanguages]) {
     if (l.code == code) return l;
   }
   return null;
@@ -81,4 +77,4 @@ String nameOf(String code) => languageByCode(code)?.name ?? code;
 
 /// Every known language, sorted by name.
 List<Language> allLanguages() =>
-    [...whisperLanguages, ...writeOnlyLanguages]..sort((a, b) => a.name.compareTo(b.name));
+    [...knownLanguages, ...moreLanguages]..sort((a, b) => a.name.compareTo(b.name));

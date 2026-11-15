@@ -12,37 +12,39 @@ const sampleRate = 16000;
 class AsrConfig {
   const AsrConfig({
     required this.vad,
-    required this.encoder,
-    required this.decoder,
     required this.tokens,
-    this.language = '',
+    this.model = '',
+    this.encoder = '',
+    this.decoder = '',
     this.threads = 2,
   });
 
-  final String vad, encoder, decoder, tokens;
+  final String vad, tokens;
 
-  /// '' = detect the language of every utterance.
-  final String language;
+  /// An Omnilingual CTC model. When empty, [encoder] and [decoder] are a
+  /// Whisper model (kept for benchmarks).
+  final String model;
+  final String encoder, decoder;
   final int threads;
 }
 
 /// One stretch of speech, as heard.
 class Heard {
-  const Heard(this.text, this.language, this.seconds, this.decodeMs);
+  const Heard(this.text, this.seconds, this.decodeMs, {this.language = ''});
   final String text;
-
-  /// Whisper's language code, normalised ('en', 'he'…); '' when unknown.
-  final String language;
   final double seconds;
   final int decodeMs;
 
+  /// The recogniser's own language guess ('' for Omnilingual, which makes none).
+  final String language;
+
   @override
-  String toString() => '[$language ${seconds.toStringAsFixed(1)}s ${decodeMs}ms] $text';
+  String toString() => '[${seconds.toStringAsFixed(1)}s ${decodeMs}ms] $text';
 }
 
-/// Voice activity detection cuts the microphone into utterances; Whisper
-/// transcribes each one and names its language. Synchronous: run it off the
-/// UI thread ([AsrWorker]).
+/// Voice activity detection cuts the microphone into utterances and the
+/// recogniser transcribes each one. Synchronous: run it off the UI thread
+/// ([AsrWorker]).
 class Asr {
   Asr(this.config) {
     _vad = so.VoiceActivityDetector(
@@ -50,9 +52,9 @@ class Asr {
         sileroVad: so.SileroVadModelConfig(
           model: config.vad,
           threshold: 0.5,
-          minSilenceDuration: 0.4, // a short pause ends a sentence: lower latency
+          minSilenceDuration: 0.5, // a pause this long ends a sentence
           minSpeechDuration: 0.25,
-          maxSpeechDuration: 8.0, // long monologues are cut so translation keeps up
+          maxSpeechDuration: 10.0, // long monologues are cut so translation keeps up
         ),
         sampleRate: sampleRate,
         numThreads: 1,
@@ -60,28 +62,31 @@ class Asr {
       ),
       bufferSizeInSeconds: 30,
     );
-    _rec = so.OfflineRecognizer(so.OfflineRecognizerConfig(
-      model: so.OfflineModelConfig(
-        whisper: so.OfflineWhisperModelConfig(
-          encoder: config.encoder,
-          decoder: config.decoder,
-          language: config.language,
-          task: 'transcribe',
-          tailPaddings: -1,
-        ),
-        tokens: config.tokens,
-        numThreads: config.threads,
-        debug: false,
-      ),
-    ));
+    final model = config.model.isNotEmpty
+        ? so.OfflineModelConfig(
+            omnilingual: so.OfflineOmnilingualAsrCtcModelConfig(model: config.model),
+            tokens: config.tokens,
+            numThreads: config.threads,
+            debug: false,
+          )
+        : so.OfflineModelConfig(
+            whisper: so.OfflineWhisperModelConfig(
+                encoder: config.encoder, decoder: config.decoder, task: 'transcribe', tailPaddings: -1),
+            tokens: config.tokens,
+            numThreads: config.threads,
+            debug: false,
+          );
+    _rec = so.OfflineRecognizer(so.OfflineRecognizerConfig(model: model));
   }
 
   final AsrConfig config;
   late final so.VoiceActivityDetector _vad;
   late final so.OfflineRecognizer _rec;
+  final _recent = AudioRing(sampleRate * 32);
 
   /// Feeds audio (mono, 16 kHz, -1..1). Returns every utterance it completed.
   List<Heard> accept(Float32List samples) {
+    _recent.add(samples);
     _vad.acceptWaveform(samples);
     return _drain();
   }
@@ -91,6 +96,7 @@ class Asr {
     _vad.flush();
     final out = _drain();
     _vad.reset();
+    _recent.clear();
     return out;
   }
 
@@ -101,11 +107,16 @@ class Asr {
     while (!_vad.isEmpty()) {
       final seg = _vad.front();
       _vad.pop();
-      final h = transcribe(seg.samples);
+      // the detector trims the edges of words; take a little more on each side
+      final padded = _recent.slice(seg.start - padBefore, seg.start + seg.samples.length + padAfter) ?? seg.samples;
+      final h = transcribe(padded);
       if (h != null) out.add(h);
     }
     return out;
   }
+
+  static const padBefore = sampleRate * 3 ~/ 10; // 300 ms
+  static const padAfter = sampleRate * 2 ~/ 10; // 200 ms
 
   Heard? transcribe(Float32List samples) {
     final sw = Stopwatch()..start();
@@ -116,7 +127,8 @@ class Asr {
       final r = _rec.getResult(stream);
       final text = cleanText(r.text);
       if (text.isEmpty) return null;
-      return Heard(text, normaliseLanguageTag(r.lang), samples.length / sampleRate, sw.elapsedMilliseconds);
+      return Heard(text, samples.length / sampleRate, sw.elapsedMilliseconds,
+          language: normaliseLanguageTag(r.lang));
     } finally {
       stream.free();
     }
@@ -125,6 +137,37 @@ class Asr {
   void free() {
     _vad.free();
     _rec.free();
+  }
+}
+
+/// The last few seconds of audio, addressed by absolute sample index (the
+/// detector's segment start), so an utterance can be cut out with margins.
+class AudioRing {
+  AudioRing(this.capacity) : _buf = Float32List(capacity);
+  final int capacity;
+  final Float32List _buf;
+  int _total = 0; // samples ever added
+
+  void add(Float32List s) {
+    for (var i = 0; i < s.length; i++) {
+      _buf[(_total + i) % capacity] = s[i];
+    }
+    _total += s.length;
+  }
+
+  void clear() => _total = 0;
+
+  /// Samples [from, to) clamped to what is still held; null if none are.
+  Float32List? slice(int from, int to) {
+    final lo = from < _total - capacity ? _total - capacity : from;
+    final start = lo < 0 ? 0 : lo;
+    final end = to > _total ? _total : to;
+    if (end <= start) return null;
+    final out = Float32List(end - start);
+    for (var i = 0; i < out.length; i++) {
+      out[i] = _buf[(start + i) % capacity];
+    }
+    return out;
   }
 }
 

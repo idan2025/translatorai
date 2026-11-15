@@ -10,14 +10,13 @@ import 'package:translatorai/src/asr.dart';
 
 void main() {
   final dir = Platform.environment['TRANSLATORAI_MODELS'];
-  for (final size in ['tiny', 'base']) {
-    test('whisper $size hears English speech and names the language', () {
+  for (final size in ['omni300']) {
+    test('$size hears English speech through the detector, with margins', () {
       so.initBindings();
       final asr = Asr(AsrConfig(
         vad: '$dir/silero_vad.onnx',
-        encoder: '$dir/$size-encoder.int8.onnx',
-        decoder: '$dir/$size-decoder.int8.onnx',
-        tokens: '$dir/$size-tokens.txt',
+        model: '$dir/$size/model.int8.onnx',
+        tokens: '$dir/$size/tokens.txt',
         threads: 2,
       ));
       final wave = so.readWave('$dir/test0.wav');
@@ -36,7 +35,6 @@ void main() {
       final text = heard.map((h) => h.text).join(' ').toLowerCase();
       expect(text, contains('nightfall'));
       expect(text, contains('lamps'));
-      expect(heard.first.language, 'en');
     }, skip: dir == null ? 'set TRANSLATORAI_MODELS to run' : false);
   }
 }
