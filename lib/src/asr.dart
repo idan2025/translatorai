@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as so;
 
 import 'languages.dart';
+import 'lid.dart';
 
 const sampleRate = 16000;
 
@@ -12,20 +13,31 @@ const sampleRate = 16000;
 class AsrConfig {
   const AsrConfig({
     required this.vad,
+    required this.encoder,
+    required this.decoder,
     required this.tokens,
-    this.model = '',
-    this.encoder = '',
-    this.decoder = '',
     this.threads = 2,
   });
 
-  final String vad, tokens;
-
-  /// An Omnilingual CTC model. When empty, [encoder] and [decoder] are a
-  /// Whisper model (kept for benchmarks).
-  final String model;
-  final String encoder, decoder;
+  final String vad, encoder, decoder, tokens;
   final int threads;
+}
+
+/// Which languages the recogniser may write.
+///
+/// - [force] set: that language, always (Listen with the spoken language picked).
+/// - [allowed] set: only these (a conversation's two languages): the model's
+///   own guess is used when it is one of them, and otherwise each of them is
+///   tried and the one whose text fits its alphabet wins.
+/// - both empty: whatever the model hears, among its 99 languages.
+class LanguagePolicy {
+  const LanguagePolicy({this.allowed = const {}, this.force = ''});
+  final Set<String> allowed;
+  final String force;
+
+  Map<String, Object> toJson() => {'allowed': allowed.toList(), 'force': force};
+  static LanguagePolicy fromJson(Map<Object?, Object?> m) =>
+      LanguagePolicy(allowed: {...(m['allowed'] as List).cast<String>()}, force: m['force'] as String);
 }
 
 /// One stretch of speech, as heard.
@@ -35,16 +47,15 @@ class Heard {
   final double seconds;
   final int decodeMs;
 
-  /// The recogniser's own language guess ('' for Omnilingual, which makes none).
+  /// The language it was written in ('' when unknown).
   final String language;
 
   @override
-  String toString() => '[${seconds.toStringAsFixed(1)}s ${decodeMs}ms] $text';
+  String toString() => '[$language ${seconds.toStringAsFixed(1)}s ${decodeMs}ms] $text';
 }
 
-/// Voice activity detection cuts the microphone into utterances and the
-/// recogniser transcribes each one. Synchronous: run it off the UI thread
-/// ([AsrWorker]).
+/// Voice activity detection cuts the microphone into utterances and Whisper
+/// transcribes each one. Synchronous: run it off the UI thread ([AsrWorker]).
 class Asr {
   Asr(this.config) {
     _vad = so.VoiceActivityDetector(
@@ -62,27 +73,27 @@ class Asr {
       ),
       bufferSizeInSeconds: 30,
     );
-    final model = config.model.isNotEmpty
-        ? so.OfflineModelConfig(
-            omnilingual: so.OfflineOmnilingualAsrCtcModelConfig(model: config.model),
-            tokens: config.tokens,
-            numThreads: config.threads,
-            debug: false,
-          )
-        : so.OfflineModelConfig(
-            whisper: so.OfflineWhisperModelConfig(
-                encoder: config.encoder, decoder: config.decoder, task: 'transcribe', tailPaddings: -1),
-            tokens: config.tokens,
-            numThreads: config.threads,
-            debug: false,
-          );
-    _rec = so.OfflineRecognizer(so.OfflineRecognizerConfig(model: model));
+    _rec = so.OfflineRecognizer(_cfg(''));
   }
+
+  so.OfflineRecognizerConfig _cfg(String language) => so.OfflineRecognizerConfig(
+        model: so.OfflineModelConfig(
+          whisper: so.OfflineWhisperModelConfig(
+              encoder: config.encoder, decoder: config.decoder, language: language, task: 'transcribe', tailPaddings: -1),
+          tokens: config.tokens,
+          numThreads: config.threads,
+          debug: false,
+        ),
+      );
 
   final AsrConfig config;
   late final so.VoiceActivityDetector _vad;
   late final so.OfflineRecognizer _rec;
   final _recent = AudioRing(sampleRate * 32);
+  var _policy = const LanguagePolicy();
+  var _language = ''; // what the recogniser is set to write ('' = its own guess)
+
+  void setPolicy(LanguagePolicy p) => _policy = p;
 
   /// Feeds audio (mono, 16 kHz, -1..1). Returns every utterance it completed.
   List<Heard> accept(Float32List samples) {
@@ -118,20 +129,39 @@ class Asr {
   static const padBefore = sampleRate * 3 ~/ 10; // 300 ms
   static const padAfter = sampleRate * 2 ~/ 10; // 200 ms
 
-  Heard? transcribe(Float32List samples) {
-    final sw = Stopwatch()..start();
+  ({String text, String lang}) _decode(Float32List samples, String language) {
+    if (language != _language) {
+      _rec.setConfig(_cfg(language)); // same loaded model, new language: no reload
+      _language = language;
+    }
     final stream = _rec.createStream();
     try {
       stream.acceptWaveform(samples: samples, sampleRate: sampleRate);
       _rec.decode(stream);
       final r = _rec.getResult(stream);
-      final text = cleanText(r.text);
-      if (text.isEmpty) return null;
-      return Heard(text, samples.length / sampleRate, sw.elapsedMilliseconds,
-          language: normaliseLanguageTag(r.lang));
+      return (text: cleanText(r.text), lang: language.isNotEmpty ? language : normaliseLanguageTag(r.lang));
     } finally {
       stream.free();
     }
+  }
+
+  Heard? transcribe(Float32List samples) {
+    final sw = Stopwatch()..start();
+    final p = _policy;
+    var r = p.force.isNotEmpty ? _decode(samples, p.force) : _decode(samples, '');
+    if (p.force.isEmpty && p.allowed.isNotEmpty && !p.allowed.contains(r.lang)) {
+      // the model heard a third language: it must be one of the two, so write
+      // the audio in each and keep the text that fits its own alphabet
+      ({String text, String lang})? best;
+      for (final l in p.allowed) {
+        final d = _decode(samples, l);
+        final fits = d.text.isNotEmpty && writtenIn(l, scriptOf(d.text));
+        if (fits && (best == null || d.text.length > best.text.length)) best = d;
+      }
+      r = best ?? (text: r.text, lang: '');
+    }
+    if (r.text.isEmpty) return null;
+    return Heard(r.text, samples.length / sampleRate, sw.elapsedMilliseconds, language: r.lang);
   }
 
   void free() {
@@ -181,6 +211,8 @@ String cleanText(String raw) {
     'subtitles by the amaraorg community', 'please subscribe',
   };
   if (lower.isEmpty || ghosts.contains(lower)) return '';
+  // Whisper sometimes loops on noise: "je vais vous montrer, je vais vous montrer, ..."
+  t = t.replaceAllMapped(RegExp(r'(.{6,}?)(?:[,.!?\s]+\1){2,}', unicode: true, caseSensitive: false), (m) => m[1]!);
   return t;
 }
 
@@ -242,6 +274,7 @@ class AsrWorker {
 
   void add(Float32List samples) => _toWorker.send(TransferableTypedData.fromList([samples]));
   void flush() => _toWorker.send('flush');
+  void setPolicy(LanguagePolicy p) => _toWorker.send(p.toJson());
 
   void stop() {
     _toWorker.send('stop');
@@ -267,6 +300,8 @@ class AsrWorker {
           for (final h in asr.accept(msg.materialize().asFloat32List())) {
             out.send(h);
           }
+        } else if (msg is Map) {
+          asr.setPolicy(LanguagePolicy.fromJson(msg));
         } else if (msg == 'flush') {
           for (final h in asr.flush()) {
             out.send(h);

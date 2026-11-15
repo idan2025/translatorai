@@ -17,27 +17,33 @@ import 'package:translatorai/src/pipeline.dart';
 void main() {
   group('direction', () {
     final g = FakeGuesser({'pausa': [Guess('it', .6), Guess('es', .3)], 'buenos dias': [Guess('es', .9)]});
-    test('listen with any language: the alphabet decides, then the identifier', () async {
-      expect(await direct(Mode.listen, 'доброе утро', g, mine: 'en', theirs: 'es'), const Direction('ru', 'en'));
-      expect(await direct(Mode.listen, 'מה זה נרסט', g, mine: 'en', theirs: 'es'), const Direction('he', 'en'));
-      expect(await direct(Mode.listen, 'buenos dias', g, mine: 'en', theirs: 'es'), const Direction('es', 'en'));
-      expect(await direct(Mode.listen, 'zzzz', g, mine: 'en', theirs: 'es'), const Direction('', 'en', guessed: true));
+    Heard hr(String text, [String lang = '']) => Heard(text, 1, 1, language: lang);
+
+    test("listen with any language: the recogniser's language is trusted when its text fits", () async {
+      expect(await direct(Mode.listen, hr('доброе утро', 'ru'), g, mine: 'en', theirs: 'es'), const Direction('ru', 'en'));
+      expect(await direct(Mode.listen, hr('מה זה', 'he'), g, mine: 'en', theirs: 'es'), const Direction('he', 'en'));
     });
-    test('listen with a pinned language never answers a third one', () async {
-      expect(await direct(Mode.listen, 'pausa', g, mine: 'en', theirs: 'es', listenFrom: 'ru'), const Direction('en', 'en'));
-      expect(await direct(Mode.listen, 'доброе утро', g, mine: 'en', theirs: 'es', listenFrom: 'ru'), const Direction('ru', 'en'));
+    test('a language whose alphabet does not fit the text is not trusted: the text decides', () async {
+      // the v0.1 bug: Russian speech labelled Polish
+      expect(await direct(Mode.listen, hr('доброе утро', 'pl'), g, mine: 'en', theirs: 'es'), const Direction('ru', 'en'));
+      expect(await direct(Mode.listen, hr('buenos dias'), g, mine: 'en', theirs: 'es'), const Direction('es', 'en'));
+      expect(await direct(Mode.listen, hr('zzzz'), g, mine: 'en', theirs: 'es'), const Direction('', 'en', guessed: true));
+    });
+    test('listen with a pinned language never answers another one', () async {
+      expect(await direct(Mode.listen, hr('pausa', 'it'), g, mine: 'en', theirs: 'es', listenFrom: 'ru'), const Direction('ru', 'en'));
     });
     test('a conversation only ever answers its two languages', () async {
-      expect(await direct(Mode.conversation, 'доброе утро', g, mine: 'en', theirs: 'ru'), const Direction('ru', 'en'));
-      expect(await direct(Mode.conversation, 'good morning', g, mine: 'en', theirs: 'ru'), const Direction('en', 'ru'));
-      // Hebrew letters in a Russian-English conversation fit neither side: turn-taking decides, marked as a guess
-      expect(await direct(Mode.conversation, 'מה זה', g, mine: 'en', theirs: 'ru', lastFrom: 'en'),
+      expect(await direct(Mode.conversation, hr('доброе утро', 'ru'), g, mine: 'en', theirs: 'ru'), const Direction('ru', 'en'));
+      expect(await direct(Mode.conversation, hr('good morning', 'en'), g, mine: 'en', theirs: 'ru'), const Direction('en', 'ru'));
+      // heard as Polish: not in the pair, so the text decides between the two
+      expect(await direct(Mode.conversation, hr('доброе утро', 'pl'), g, mine: 'en', theirs: 'ru'), const Direction('ru', 'en'));
+      // Hebrew letters in an English-Russian conversation fit neither side: turn-taking decides, marked as a guess
+      expect(await direct(Mode.conversation, hr('מה זה', 'he'), g, mine: 'en', theirs: 'ru', lastFrom: 'en'),
           const Direction('ru', 'en', guessed: true));
     });
     test('two languages in one alphabet: the identifier picks between them only', () async {
-      expect(await direct(Mode.conversation, 'pausa', g, mine: 'en', theirs: 'es'), const Direction('es', 'en'));
-      // nothing known about the text: the side that did not speak last
-      expect(await direct(Mode.conversation, 'qwerty', g, mine: 'en', theirs: 'es', lastFrom: 'es'),
+      expect(await direct(Mode.conversation, hr('pausa'), g, mine: 'en', theirs: 'es'), const Direction('es', 'en'));
+      expect(await direct(Mode.conversation, hr('qwerty'), g, mine: 'en', theirs: 'es', lastFrom: 'es'),
           const Direction('en', 'es'));
     });
   });
@@ -87,6 +93,8 @@ void main() {
       expect(cleanText('(applause) ♪♪'), '');
       expect(cleanText('Where is the station?'), 'Where is the station?');
       expect(cleanText('Thank you for the help [laughs]'), 'Thank you for the help');
+      expect(cleanText('Je vais vous montrer, je vais vous montrer, je vais vous montrer, je vais vous montrer'), 'Je vais vous montrer');
+      expect(cleanText('Ha ha, that is so funny, ha ha'), 'Ha ha, that is so funny, ha ha');
     });
     test('language tags are normalised', () {
       expect(normaliseLanguageTag('<|en|>'), 'en');
@@ -96,6 +104,8 @@ void main() {
       final codes = allLanguages().map((l) => l.code).toList();
       expect(codes.toSet().length, codes.length);
       expect(knownLanguages.length, 99);
+      expect(hearable.containsAll(['he', 'ar', 'zh', 'ru']), isTrue);
+      expect(hearable.contains('eo'), isFalse, reason: 'Esperanto can be written but not heard');
     });
   });
 
@@ -138,6 +148,10 @@ void main() {
       File('${dir.path}/keep.onnx').writeAsStringSync('y');
       await ModelStore(dir).prune([const ModelFile('keep.onnx', '', '', 1)]);
       expect(dir.listSync().map((e) => e.uri.pathSegments.last), ['keep.onnx']);
+    });
+
+    test('the old Omnilingual id falls back to the first model, so setup downloads it', () {
+      expect(speechModelById('omni-1b').id, speechModels.first.id);
     });
 
     test('every shipped model file is pinned to a digest', () {

@@ -11,24 +11,24 @@ class ModelFile {
   final int bytes;
 }
 
-/// A speech recogniser. Omnilingual (Meta, Apache 2.0) writes what it hears
-/// in that language's own alphabet without guessing a language first, so it
-/// never "hears" Russian as Polish; the language is told from the text after.
+/// A speech recogniser: Whisper, int8. Unlike Omnilingual (v0.2, replaced
+/// after real-phone tests: on a phone microphone it mixed alphabets inside one
+/// phrase and wrote Russian in Latin letters), Whisper can be told the language
+/// to write in, so it can never come out in the wrong alphabet.
 class SpeechModel {
-  const SpeechModel(this.id, this.label, this.note, this.model, this.tokens);
+  const SpeechModel(this.id, this.label, this.note, this.encoder, this.decoder, this.tokens);
   final String id;
   final String label;
   final String note;
-  final ModelFile model;
-  final ModelFile tokens;
+  final ModelFile encoder, decoder, tokens;
 
-  List<ModelFile> get files => [model, tokens];
-  int get bytes => model.bytes + tokens.bytes;
+  List<ModelFile> get files => [encoder, decoder, tokens];
+  int get bytes => files.fold(0, (a, f) => a + f.bytes);
 }
 
 const _hf = 'https://huggingface.co/csukuangfj';
-const _omni300 = '$_hf/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/6abf1ece20cd2308bdb7d13cd78ec1c44fa4c094';
-const _omni1b = '$_hf/sherpa-onnx-omnilingual-asr-1600-languages-1B-ctc-int8-2025-11-12/resolve/17db76eab583b0b868ffb0df104ab879145087e5';
+const _small = '$_hf/sherpa-onnx-whisper-small/resolve/8f3c18b358db4d1f2fc1eae49d75cd20989e4309';
+const _turbo = '$_hf/sherpa-onnx-whisper-turbo/resolve/2ca6ff69fc878651b770880507669577ac41c2ff';
 
 const vadModel = ModelFile(
   'silero_vad.onnx',
@@ -38,25 +38,29 @@ const vadModel = ModelFile(
 );
 
 /// Both models share one vocabulary file (identical bytes).
-const _omniTokens = ModelFile('omni-tokens.txt', '$_omni300/tokens.txt',
-    'a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31', 86423);
+const _tokens = ModelFile('whisper-tokens.txt', '$_small/small-tokens.txt',
+    'b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126', 816730);
 
 const speechModels = <SpeechModel>[
   SpeechModel(
-    'omni-300m',
+    'whisper-small',
     'Standard',
-    'Omnilingual 300M · 1,600 languages · 365 MB · most phones',
-    ModelFile('omni-300m.int8.onnx', '$_omni300/model.int8.onnx',
-        'e7c4e54ee4c4c47829cc6667d5d00ed8ea7bef1dcfeef0fce766f77752a2726c', 365352120),
-    _omniTokens,
+    'Whisper small · 99 languages · 375 MB · most phones',
+    ModelFile('whisper-small-encoder.int8.onnx', '$_small/small-encoder.int8.onnx',
+        '4cbe7b22fa9026b843b60a68640c747de05bafb1a11b57edc0e66c232d9f33a9', 112442483),
+    ModelFile('whisper-small-decoder.int8.onnx', '$_small/small-decoder.int8.onnx',
+        'acad50b5c782696e91b55914cc5ab4f756f1532f76e22aa6fc615f39fb69a8ee', 262226114),
+    _tokens,
   ),
   SpeechModel(
-    'omni-1b',
+    'whisper-turbo',
     'Best',
-    'Omnilingual 1B · 1,600 languages · 1 GB · recent phones with 6 GB+ RAM',
-    ModelFile('omni-1b.int8.onnx', '$_omni1b/model.int8.onnx',
-        'f7b74c964039162423b83e3fa950ce24810c9a635d9ff8468b5f4d142b7c1e8c', 1031628252),
-    _omniTokens,
+    'Whisper large-v3-turbo · 99 languages · 1 GB · recent phones with 6 GB+ RAM',
+    ModelFile('whisper-turbo-encoder.int8.onnx', '$_turbo/turbo-encoder.int8.onnx',
+        'b02dcdf54f348741e93fe732b67d933c8dcb6735655f710640143081db38878b', 674716297),
+    ModelFile('whisper-turbo-decoder.int8.onnx', '$_turbo/turbo-decoder.int8.onnx',
+        '20accd02388482eb3a46bd615631adfdc85e1eb2c7db9ea3f02a40ffe6b81547', 361080764),
+    _tokens,
   ),
 ];
 

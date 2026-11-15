@@ -242,7 +242,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   AsrConfig get asrConfig => AsrConfig(
         vad: widget.store.pathOf(vadModel.name),
-        model: widget.store.pathOf(widget.model.model.name),
+        encoder: widget.store.pathOf(widget.model.encoder.name),
+        decoder: widget.store.pathOf(widget.model.decoder.name),
         tokens: widget.store.pathOf(widget.model.tokens.name),
         threads: math.min(4, math.max(1, Platform.numberOfProcessors ~/ 2)),
       );
@@ -273,7 +274,8 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (_) => LanguagePicker(
         current: current,
         allowAny: which == 'from',
-        allowed: (l) => live.engine.supports(l.code),
+        // a spoken side must be heard as well as written; Listen's own language only written
+        allowed: (l) => live.engine.supports(l.code) && (which == 'mine' && live.mode == Mode.listen || hearable.contains(l.code)),
       ),
     );
     if (choice == null) return;
@@ -360,7 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 16),
         Text('Speech model: ${widget.model.note}'),
         const SizedBox(height: 8),
-        const Text('Speech recognition: Meta Omnilingual ASR (Apache 2.0) via sherpa-onnx. '
+        const Text('Speech recognition: OpenAI Whisper (MIT) via sherpa-onnx. '
             'Voice detection: Silero VAD (MIT). Translation and language identification: Google ML Kit, on-device. '
             "Voice: this phone's text-to-speech."),
         const SizedBox(height: 8),

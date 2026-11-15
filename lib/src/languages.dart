@@ -1,8 +1,8 @@
 /// Every language the app knows, and which stage can handle it.
 ///
-/// The speech model (Omnilingual, 1,600 languages) hears every language
-/// listed here, so a language is usable both ways as soon as the translation
-/// engine writes it. Any pair works: there is no fixed list of pairs.
+/// A language is usable as a *source* when the speech model (Whisper, 99
+/// languages) hears it, and as a *target* when the translation engine writes
+/// it. Any pair of those works: there is no fixed list of pairs.
 class Language {
   const Language(this.code, this.name);
 
@@ -20,7 +20,7 @@ class Language {
   String toString() => '$name ($code)';
 }
 
-/// Languages with a name in the app (Whisper's 99, which Omnilingual all covers).
+/// The languages Whisper hears (its multilingual vocabulary, 99 entries).
 const knownLanguages = <Language>[
   Language('en', 'English'), Language('zh', 'Chinese'), Language('de', 'German'),
   Language('es', 'Spanish'), Language('ru', 'Russian'), Language('ko', 'Korean'),
@@ -57,8 +57,11 @@ const knownLanguages = <Language>[
   Language('ba', 'Bashkir'), Language('jw', 'Javanese'), Language('su', 'Sundanese'),
 ];
 
-/// More languages a translation engine writes, also heard by Omnilingual.
+/// Languages a translation engine writes that Whisper cannot hear: targets only.
 const moreLanguages = <Language>[Language('eo', 'Esperanto'), Language('ga', 'Irish')];
+
+/// Codes the speech model can hear.
+final Set<String> hearable = {for (final l in knownLanguages) l.code};
 
 /// A recogniser's language tag ("en", "<|en|>", " en") as a plain code.
 String normaliseLanguageTag(String raw) {

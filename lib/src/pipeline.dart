@@ -37,26 +37,27 @@ class Direction {
   String toString() => '$from→$to${guessed ? '?' : ''}';
 }
 
-/// Decides the direction of an utterance from its text.
+/// Decides the direction of an utterance.
 ///
-/// Listen: into [mine]. With a spoken language pinned ([listenFrom]) only it
-/// and [mine] are considered, so a phrase can never come out as a third
-/// language; with "any language", the alphabet and then the text identifier
-/// decide. Conversation: only [mine] and [theirs] are considered; text that
-/// fits neither is taken as the turn of whoever did not speak last.
-Future<Direction> direct(Mode mode, String text, TextLanguageGuesser guesser,
+/// The recogniser says which language it wrote ([Heard.language]); that is
+/// trusted when it is one of the languages in play and its text is in that
+/// language's alphabet. Otherwise the text decides (alphabet, then ML Kit).
+/// Listen with the spoken language picked: that language. Conversation: only
+/// [mine] and [theirs] are ever answered; text that fits neither is taken as
+/// the turn of whoever did not speak last.
+Future<Direction> direct(Mode mode, Heard h, TextLanguageGuesser guesser,
     {required String mine, required String theirs, String listenFrom = '', String? lastFrom}) async {
+  final script = scriptOf(h.text);
+  bool trusted(String l, Set<String> among) => l.isNotEmpty && (among.isEmpty || among.contains(l)) && writtenIn(l, script);
   if (mode == Mode.listen) {
-    if (listenFrom.isNotEmpty) {
-      final id = await identify(text, guesser, among: {listenFrom, mine}, prefer: listenFrom);
-      return Direction(id ?? listenFrom, mine);
-    }
-    final id = await identify(text, guesser);
-    return Direction(id ?? '', mine, guessed: id == null);
+    if (listenFrom.isNotEmpty) return Direction(listenFrom, mine);
+    final l = trusted(h.language, const {}) ? h.language : await identify(h.text, guesser);
+    return Direction(l ?? '', mine, guessed: l == null);
   }
+  final pair = {mine, theirs};
   final other = lastFrom == theirs ? mine : theirs;
-  final id = await identify(text, guesser, among: {mine, theirs}, prefer: other);
-  if (id != null) return Direction(id, id == mine ? theirs : mine);
+  final l = trusted(h.language, pair) ? h.language : await identify(h.text, guesser, among: pair, prefer: other);
+  if (l != null) return Direction(l, l == mine ? theirs : mine);
   return Direction(other, other == mine ? theirs : mine, guessed: true);
 }
 
@@ -118,6 +119,11 @@ class LiveTranslator extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _asr!.setPolicy(LanguagePolicy(
+      // Listen with a language picked: write that language; a conversation: only its two
+      force: mode == Mode.listen ? listenFrom : '',
+      allowed: mode == Mode.conversation ? {mine, theirs} : const {},
+    ));
     _heardSub = _asr!.heard.listen(_onHeard);
     _errSub = _asr!.errors.listen((e) {
       error = e;
@@ -168,7 +174,7 @@ class LiveTranslator extends ChangeNotifier {
     // Two queues, both in spoken order: telling the language is quick and
     // shows the line at once; translating and speaking can lag behind it.
     _ids = _ids.then((_) async {
-      final d = await direct(mode, h.text, guesser,
+      final d = await direct(mode, h, guesser,
           mine: mine, theirs: theirs, listenFrom: listenFrom, lastFrom: _lastFrom);
       if (!d.guessed && d.from.isNotEmpty) _lastFrom = d.from;
       final line = Line(h, d);
