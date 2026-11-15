@@ -492,6 +492,15 @@ class _HomeScreenState extends State<HomeScreen> {
               Flexible(child: Text('Downloading the $preparing translation model…')),
             ]),
           ),
+        if (live.behind)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Text(
+              'The phone cannot keep up with this speech model. Switch to the Standard model in Settings, '
+              'or speak in shorter sentences.',
+              style: TextStyle(color: cs.tertiary),
+            ),
+          ),
         if (live.error != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -586,7 +595,10 @@ class _LineView extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${nameOf(d.from)}${d.guessed ? ' (guessed)' : ''} → ${nameOf(d.to)}', style: t.labelSmall),
+          Text(
+              '${nameOf(d.from)}${d.guessed ? ' (guessed)' : ''} → ${nameOf(d.to)}'
+              '  ·  ${line.heard.seconds.toStringAsFixed(1)} s heard, ${(line.heard.decodeMs / 1000).toStringAsFixed(1)} s to write',
+              style: t.labelSmall),
           const SizedBox(height: 4),
           Text(sentenceCase(line.heard.text), style: t.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 6),

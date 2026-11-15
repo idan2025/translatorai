@@ -95,6 +95,14 @@ class Asr {
 
   void setPolicy(LanguagePolicy p) => _policy = p;
 
+  /// Forgets the audio in progress, unfinished speech included. Used when the
+  /// microphone was closed for a moment (the phone was speaking), so the
+  /// detector never joins what came before with what comes after.
+  void reset() {
+    _vad.reset();
+    _recent.clear();
+  }
+
   /// Feeds audio (mono, 16 kHz, -1..1). Returns every utterance it completed.
   List<Heard> accept(Float32List samples) {
     _recent.add(samples);
@@ -119,11 +127,28 @@ class Asr {
       final seg = _vad.front();
       _vad.pop();
       // the detector trims the edges of words; take a little more on each side
-      final padded = _recent.slice(seg.start - padBefore, seg.start + seg.samples.length + padAfter) ?? seg.samples;
+      // self-check: the ring must hold exactly the audio the detector returned, else the
+      // indexes have drifted apart and padding would cut words; fall back to the plain segment
+      final same = _recent.slice(seg.start, seg.start + seg.samples.length);
+      final aligned = same != null && same.length == seg.samples.length && _sameStart(same, seg.samples);
+      if (!aligned) misaligned++;
+      final padded = aligned
+          ? _recent.slice(seg.start - padBefore, seg.start + seg.samples.length + padAfter) ?? seg.samples
+          : seg.samples;
       final h = transcribe(padded);
       if (h != null) out.add(h);
     }
     return out;
+  }
+
+  /// Segments the ring could not match (should stay 0).
+  int misaligned = 0;
+
+  static bool _sameStart(Float32List a, Float32List b) {
+    for (var i = 0; i < 256 && i < a.length; i++) {
+      if ((a[i] - b[i]).abs() > 1e-6) return false;
+    }
+    return true;
   }
 
   static const padBefore = sampleRate * 3 ~/ 10; // 300 ms
@@ -160,8 +185,9 @@ class Asr {
       }
       r = best ?? (text: r.text, lang: '');
     }
-    if (r.text.isEmpty) return null;
-    return Heard(r.text, samples.length / sampleRate, sw.elapsedMilliseconds, language: r.lang);
+    final seconds = samples.length / sampleRate;
+    if (r.text.isEmpty || !plausible(r.text, seconds)) return null;
+    return Heard(r.text, seconds, sw.elapsedMilliseconds, language: r.lang);
   }
 
   void free() {
@@ -201,6 +227,15 @@ class AudioRing {
   }
 }
 
+/// Whether this much text can have been said in this much audio. Whisper
+/// invents long sentences from a second of rustle; people do not speak faster
+/// than about 30 characters a second.
+bool plausible(String text, double seconds) {
+  final letters = text.replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '').length;
+  if (letters == 0) return false;
+  return letters / (seconds < 0.5 ? 0.5 : seconds) <= 30;
+}
+
 /// Whisper's known noise on silence or music: bracketed tags and a few
 /// phrases it hallucinates when nobody is talking.
 String cleanText(String raw) {
@@ -231,6 +266,7 @@ Float32List pcm16ToFloat(Uint8List bytes) {
 /// Stream chunks are not aligned to samples; this carries the odd byte over.
 class Pcm16Decoder {
   int? _carry;
+  void reset() => _carry = null;
   Float32List add(Uint8List chunk) {
     Uint8List b = chunk;
     if (_carry != null) {
@@ -274,6 +310,7 @@ class AsrWorker {
 
   void add(Float32List samples) => _toWorker.send(TransferableTypedData.fromList([samples]));
   void flush() => _toWorker.send('flush');
+  void reset() => _toWorker.send('reset');
   void setPolicy(LanguagePolicy p) => _toWorker.send(p.toJson());
 
   void stop() {
@@ -302,6 +339,8 @@ class AsrWorker {
           }
         } else if (msg is Map) {
           asr.setPolicy(LanguagePolicy.fromJson(msg));
+        } else if (msg == 'reset') {
+          asr.reset();
         } else if (msg == 'flush') {
           for (final h in asr.flush()) {
             out.send(h);

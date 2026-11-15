@@ -66,6 +66,24 @@ void main() {
     });
   });
 
+  group('echo and noise', () {
+    test("the phone's own translation, heard back, is recognised as echo", () {
+      final said = ['Доброе утро, как дела?', 'Where is the station?'];
+      expect(isEcho('доброе утро как дела', said), isTrue);
+      expect(isEcho('Where is the', said), isTrue, reason: 'a part of what was said');
+      expect(isEcho('Wear is the station', said), isTrue, reason: 'a small mistake');
+      expect(isEcho('I would like a coffee please', said), isFalse);
+      expect(isEcho('ok', said), isFalse, reason: 'too short to judge');
+      expect(isEcho('anything', const []), isFalse);
+    });
+    test('text faster than anyone can speak is noise, not speech', () {
+      expect(plausible('Hello there', 1.0), isTrue);
+      expect(plausible('I am going to tell you the whole story of my life right now', 0.6), isFalse);
+      expect(plausible('...', 2.0), isFalse);
+      expect(plausible('שלום', 0.3), isTrue);
+    });
+  });
+
   group('audio', () {
     test('the ring cuts an utterance out with margins, by absolute sample index', () {
       final r = AudioRing(10);

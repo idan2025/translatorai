@@ -61,6 +61,36 @@ Future<Direction> direct(Mode mode, Heard h, TextLanguageGuesser guesser,
   return Direction(other, other == mine ? theirs : mine, guessed: true);
 }
 
+/// Whether [heard] is the phone's own voice coming back through the
+/// microphone: it matches something spoken a moment ago, allowing for the
+/// recogniser's small mistakes.
+bool isEcho(String heard, Iterable<String> spoken) {
+  String norm(String s) => s.toLowerCase().replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
+  final h = norm(heard);
+  if (h.length < 4) return false;
+  for (final sp in spoken) {
+    final t = norm(sp);
+    if (t.isEmpty) continue;
+    if (t.contains(h) || h.contains(t)) return true;
+    final longest = h.length > t.length ? h.length : t.length;
+    if (_editDistance(h, t) / longest <= 0.35) return true;
+  }
+  return false;
+}
+
+int _editDistance(String a, String b) {
+  var prev = List<int>.generate(b.length + 1, (i) => i);
+  for (var i = 1; i <= a.length; i++) {
+    final cur = List<int>.filled(b.length + 1, 0)..[0] = i;
+    for (var j = 1; j <= b.length; j++) {
+      final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
+      cur[j] = [cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost].reduce((x, y) => x < y ? x : y);
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
 /// One line of the transcript.
 class Line {
   Line(this.heard, this.direction);
@@ -102,6 +132,12 @@ class LiveTranslator extends ChangeNotifier {
   int _waiting = 0;
   DateTime _muteUntil = DateTime.fromMillisecondsSinceEpoch(0);
   String? _lastFrom;
+  bool _muted = false;
+  final _spoken = <({String text, DateTime at})>[];
+
+  /// Lines are piling up faster than they are translated: the phone is too
+  /// slow for the speech model chosen.
+  bool get behind => _waiting >= 3;
 
   Future<void> start(AsrConfig config) async {
     if (running) return;
@@ -142,6 +178,12 @@ class LiveTranslator extends ChangeNotifier {
     _micSub = stream.listen((bytes) {
       // never hear ourselves: drop the microphone while a translation plays
       if (DateTime.now().isBefore(_muteUntil)) return;
+      if (_muted) {
+        // first audio after the voice stopped: start the detector clean
+        _muted = false;
+        _asr?.reset();
+        _decoder.reset();
+      }
       _asr?.add(_decoder.add(bytes));
     });
     running = true;
@@ -171,6 +213,10 @@ class LiveTranslator extends ChangeNotifier {
   }
 
   void _onHeard(Heard h) {
+    // the phone's own voice, heard through the microphone and written down as speech
+    if (isEcho(h.text, [for (final s in _spoken) if (DateTime.now().difference(s.at).inMilliseconds < 4000) s.text])) {
+      return;
+    }
     // Two queues, both in spoken order: telling the language is quick and
     // shows the line at once; translating and speaking can lag behind it.
     _ids = _ids.then((_) async {
@@ -209,12 +255,20 @@ class LiveTranslator extends ChangeNotifier {
     final text = line.translation;
     // when lines pile up, read only the newest: a voice that lags is worse than a skipped line
     if (speak && text != null && d.from != d.to && _waiting <= 1) {
+      // while it speaks (and for 4 s after), what it said counts as echo; a reply that
+      // happens to repeat it later is real speech
+      _spoken.add((text: text, at: DateTime.now().add(const Duration(minutes: 1))));
+      if (_spoken.length > 6) _spoken.removeAt(0);
       _muteUntil = DateTime.now().add(const Duration(minutes: 1));
+      _muted = true;
+      _asr?.flush(); // finish what was being said before the voice starts
       try {
         final ok = await speaker.say(text, d.to);
         if (!ok) line.problem = 'No voice for ${nameOf(d.to)} on this phone (Settings › Text-to-speech)';
       } finally {
-        _muteUntil = DateTime.now().add(const Duration(milliseconds: 350));
+        // the room still rings and the microphone is still delivering old audio
+        _muteUntil = DateTime.now().add(const Duration(milliseconds: 900));
+        _spoken.last = (text: text, at: DateTime.now());
       }
       notifyListeners();
     }
