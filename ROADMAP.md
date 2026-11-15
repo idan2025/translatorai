@@ -21,6 +21,8 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.3.1: downloaded speech models are kept when switching (0.3.0 deleted the other one);
+  Settings › Delete the other model frees the space on request.
 
 ## Not verified yet
 

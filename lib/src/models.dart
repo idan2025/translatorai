@@ -66,3 +66,6 @@ const speechModels = <SpeechModel>[
 
 SpeechModel speechModelById(String id) =>
     speechModels.firstWhere((m) => m.id == id, orElse: () => speechModels.first);
+
+/// Every file any speech model needs, plus the voice detector.
+final List<ModelFile> allModelFiles = [vadModel, for (final m in speechModels) ...m.files];

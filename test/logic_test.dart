@@ -143,6 +143,29 @@ void main() {
       expect(dir.listSync(), isEmpty);
     });
 
+    test('switching models keeps the other one: prune with every known file removes only leftovers', () async {
+      for (final f in allModelFiles) {
+        File('${dir.path}/${f.name}').writeAsStringSync('x');
+      }
+      File('${dir.path}/omni-1b.int8.onnx').writeAsStringSync('old model');
+      File('${dir.path}/whisper-small-encoder.int8.onnx.part').writeAsStringSync('half');
+      await ModelStore(dir).prune(allModelFiles);
+      final left = dir.listSync().map((e) => e.uri.pathSegments.last).toSet();
+      expect(left, {for (final f in allModelFiles) f.name});
+    });
+
+    test('deleting a model keeps the vocabulary file the other one shares', () async {
+      for (final f in allModelFiles) {
+        File('${dir.path}/${f.name}').writeAsStringSync('x');
+      }
+      final store = ModelStore(dir);
+      await store.deleteModel(speechModels[1].files, except: speechModels[0].files);
+      expect(store.hasAny(speechModels[1].files.where((f) => f.name != speechModels[0].tokens.name)), isFalse);
+      expect(File('${dir.path}/${speechModels[0].tokens.name}').existsSync(), isTrue);
+      expect(speechModels[0].files.every((f) => File('${dir.path}/${f.name}').existsSync()), isTrue,
+          reason: 'the model in use is untouched');
+    });
+
     test('prune keeps only the files in use', () async {
       File('${dir.path}/old-model.onnx').writeAsStringSync('x');
       File('${dir.path}/keep.onnx').writeAsStringSync('y');

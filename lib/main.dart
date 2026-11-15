@@ -10,6 +10,7 @@ import 'src/asr.dart';
 import 'src/languages.dart';
 import 'src/model_store.dart';
 import 'src/models.dart';
+
 import 'src/pipeline.dart';
 import 'src/settings.dart';
 import 'src/speaker.dart';
@@ -118,7 +119,9 @@ class _SetupScreenState extends State<SetupScreen> {
       await widget.store.ensure(files, onProgress: (d, t) {
         if (mounted) setState(() => progress = d / t);
       });
-      await widget.store.prune(files); // switching models frees the old one's space
+      // keep every known model so switching back needs no download; drop only leftovers
+      // (partial downloads, files of models this version no longer uses)
+      await widget.store.prune(allModelFiles);
       widget.onDone(picked);
     } catch (e) {
       if (mounted) {
@@ -161,7 +164,7 @@ class _SetupScreenState extends State<SetupScreen> {
                     value: m.id,
                     enabled: !busy,
                     title: Text(m.label),
-                    subtitle: Text(m.note),
+                    subtitle: Text('${m.note}${widget.store.hasAll(m.files) ? '\nDownloaded' : ''}'),
                   ),
                 ),
             ]),
@@ -173,7 +176,9 @@ class _SetupScreenState extends State<SetupScreen> {
             Text('${(progress! * 100).toStringAsFixed(0)}% of ${(picked.bytes / 1e6).round()} MB'),
           ] else
             FilledButton.icon(
-                onPressed: download, icon: const Icon(Icons.download), label: const Text('Download and start')),
+                onPressed: download,
+                icon: Icon(widget.store.hasAll([vadModel, ...picked.files]) ? Icons.check : Icons.download),
+                label: Text(widget.store.hasAll([vadModel, ...picked.files]) ? 'Use this model' : 'Download and start')),
           if (error != null) ...[
             const SizedBox(height: 12),
             Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
@@ -419,6 +424,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     onPressed: locked ? null : widget.onChangeModel,
                     child: Text('Speech model: ${widget.model.label}'),
                   ),
+                  // downloaded models are kept so switching back is instant; this frees the space
+                  for (final m in speechModels)
+                    if (m.id != widget.model.id && widget.store.hasAny(m.files))
+                      MenuItemButton(
+                        leadingIcon: const Icon(Icons.delete_outline),
+                        onPressed: locked
+                            ? null
+                            : () async {
+                                await widget.store.deleteModel(m.files, except: widget.model.files);
+                                if (mounted) setState(() {});
+                              },
+                        child: Text('Delete the ${m.label} model (${(m.bytes / 1e6).round()} MB)'),
+                      ),
                   MenuItemButton(
                       leadingIcon: const Icon(Icons.system_update), onPressed: checkForUpdates, child: const Text('Check for updates')),
                   MenuItemButton(leadingIcon: const Icon(Icons.info_outline), onPressed: about, child: const Text('About')),

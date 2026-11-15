@@ -70,6 +70,19 @@ class ModelStore {
     await part.rename(pathOf(f.name));
   }
 
+  bool hasAny(Iterable<ModelFile> files) => files.any((f) => File(pathOf(f.name)).existsSync());
+
+  /// Deletes a model's files, except those another model still uses (the
+  /// shared vocabulary file).
+  Future<void> deleteModel(Iterable<ModelFile> files, {Iterable<ModelFile> except = const []}) async {
+    final keep = {for (final f in except) f.name};
+    for (final f in files) {
+      if (keep.contains(f.name)) continue;
+      final file = File(pathOf(f.name));
+      if (await file.exists()) await file.delete();
+    }
+  }
+
   /// Deletes every file not in [keep] (old models, leftover partial files).
   Future<void> prune(Iterable<ModelFile> keep) async {
     if (!await dir.exists()) return;
