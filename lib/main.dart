@@ -229,10 +229,14 @@ class HomeScreen extends StatefulWidget {
 /// The GPU reset is told once per app start, not again on every model switch.
 bool _gpuToldOnce = false;
 
-class _HomeScreenState extends State<HomeScreen> {
+const _system = MethodChannel('translatorai/system');
+
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final LiveTranslator live;
   final scroll = ScrollController();
   String? preparing;
+  bool _screenOn = false;
+  int _lineCount = 0;
 
   @override
   void initState() {
@@ -254,23 +258,61 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       });
     }
+    WidgetsBinding.instance.addObserver(this);
     live.addListener(() {
       if (!mounted) return;
       // the GPU route survived loading and a first sentence: it is not crashing
       if (widget.settings.accelTrying && live.decodes > 0) widget.settings.accelTrying = false;
+      // the screen stays on while the microphone is open
+      if (live.running != _screenOn) {
+        _screenOn = live.running;
+        _system.invokeMethod('keepScreenOn', {'on': _screenOn}).ignore();
+      }
       setState(() {});
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
-      });
+      // follow new lines only, so a status change never yanks the list
+      if (live.lines.length != _lineCount) {
+        _lineCount = live.lines.length;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (scroll.hasClients) {
+            scroll.animateTo(scroll.position.maxScrollExtent,
+                duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+          }
+        });
+      }
+    });
+    // load the speech model now, so the first tap does not wait for it
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) live.preload(asrConfig);
     });
     _prepare([live.mine, if (live.mode == Mode.conversation) live.theirs, if (live.listenFrom.isNotEmpty) live.listenFrom]);
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // never listen in the background: the microphone is released when the app leaves the screen
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) live.stop();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    if (_screenOn) _system.invokeMethod('keepScreenOn', {'on': false}).ignore();
     live.dispose();
     scroll.dispose();
     super.dispose();
+  }
+
+  /// A translation filling the screen, for showing to someone in a noisy place.
+  void showBig(Line line) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      fullscreenDialog: true,
+      builder: (_) => BigText(text: line.translation ?? line.heard.text, language: nameOf(line.direction.to)),
+    ));
+  }
+
+  void copyLine(Line line) {
+    Clipboard.setData(ClipboardData(text: '${line.heard.text}\n${line.translation ?? ''}'.trim()));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
   }
 
   AsrConfig get asrConfig => AsrConfig(
@@ -517,6 +559,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   MenuItemButton(
                       leadingIcon: const Icon(Icons.system_update), onPressed: checkForUpdates, child: const Text('Check for updates')),
+                  MenuItemButton(
+                    leadingIcon: const Icon(Icons.download_for_offline_outlined),
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                        builder: (_) => OfflineLanguages(engine: live.engine, inUse: {live.mine, live.theirs, live.listenFrom}))),
+                    child: const Text('Offline languages…'),
+                  ),
                   MenuItemButton(leadingIcon: const Icon(Icons.info_outline), onPressed: about, child: const Text('About')),
                   MenuItemButton(leadingIcon: const Icon(Icons.exit_to_app), onPressed: exitApp, child: const Text('Exit')),
                 ],
@@ -587,7 +635,12 @@ class _HomeScreenState extends State<HomeScreen> {
         if (live.error != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(live.error!, style: TextStyle(color: cs.error)),
+            child: Row(children: [
+              Expanded(child: Text(live.error!, style: TextStyle(color: cs.error))),
+              if (live.error!.contains('permission'))
+                TextButton(
+                    onPressed: () => _system.invokeMethod('openAppSettings').ignore(), child: const Text('Open settings')),
+            ]),
           ),
         Expanded(
           child: live.lines.isEmpty
@@ -596,10 +649,36 @@ class _HomeScreenState extends State<HomeScreen> {
                   controller: scroll,
                   padding: const EdgeInsets.all(16),
                   itemCount: live.lines.length,
-                  itemBuilder: (_, i) => _LineView(line: live.lines[i], mine: live.mine, mode: live.mode),
+                  itemBuilder: (_, i) => _LineView(
+                    line: live.lines[i],
+                    mine: live.mine,
+                    mode: live.mode,
+                    onReplay: () => live.replay(live.lines[i]),
+                    onCopy: () => copyLine(live.lines[i]),
+                    onShow: () => showBig(live.lines[i]),
+                  ),
                 ),
         ),
-        if (live.running || live.phase == 'decoding' || live.phase == 'missed')
+        if (live.modelState == 'loading' || live.modelState == 'failed')
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Row(children: [
+              if (live.modelState == 'loading')
+                const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                Icon(Icons.error_outline, size: 16, color: cs.error),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  live.modelState == 'loading'
+                      ? 'Loading the ${widget.model.label} speech model…'
+                      : 'The speech model could not be loaded.',
+                  style: Theme.of(context).textTheme.labelMedium,
+                ),
+              ),
+            ]),
+          )
+        else if (live.running || live.phase == 'decoding' || live.phase == 'missed')
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(children: [
@@ -614,7 +693,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   'hearing' => 'Hearing you…',
                   'decoding' => 'Writing it down…',
                   'missed' => "Didn't catch that. Try again, a little closer.",
-                  _ => 'Listening',
+                  _ => live.tapMode && live.side == null ? 'Tap a language to speak' : 'Listening',
                 },
                 style: Theme.of(context).textTheme.labelMedium,
               ),
@@ -681,10 +760,12 @@ class _Empty extends StatelessWidget {
 }
 
 class _LineView extends StatelessWidget {
-  const _LineView({required this.line, required this.mine, required this.mode});
+  const _LineView(
+      {required this.line, required this.mine, required this.mode, required this.onReplay, required this.onCopy, required this.onShow});
   final Line line;
   final String mine;
   final Mode mode;
+  final VoidCallback onReplay, onCopy, onShow;
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -692,16 +773,22 @@ class _LineView extends StatelessWidget {
     final d = line.direction;
     // in a conversation, what the other person said sits left and is for you; yours sits right
     final forMe = mode == Mode.listen || d.to == mine;
+    final hasTranslation = line.translation != null && d.from != d.to;
     return Align(
       alignment: forMe ? Alignment.centerLeft : Alignment.centerRight,
       child: Container(
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
         margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
+        child: Material(
           color: forMe ? cs.secondaryContainer : cs.tertiaryContainer,
           borderRadius: BorderRadius.circular(16),
-        ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            // tap: say it again; long press: copy
+            onTap: hasTranslation ? onReplay : null,
+            onLongPress: onCopy,
+            child: Padding(
+        padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
               '${nameOf(d.from)}${d.guessed ? ' (guessed)' : ''} → ${nameOf(d.to)}'
@@ -715,8 +802,70 @@ class _LineView extends StatelessWidget {
           else if (line.problem != null)
             Text(line.problem!, style: t.bodyMedium?.copyWith(color: cs.error))
           else if (d.from != d.to)
-            Text(line.translation!, style: t.titleMedium),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Text(line.translation!, style: t.titleMedium)),
+              IconButton(
+                tooltip: 'Show full screen',
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.open_in_full, size: 18),
+                onPressed: onShow,
+              ),
+            ]),
         ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One translation, as big as the screen allows: hand the phone over, or hold
+/// it up in a noisy place. The flip button turns it to face the person across
+/// the table.
+class BigText extends StatefulWidget {
+  const BigText({super.key, required this.text, required this.language});
+  final String text, language;
+  @override
+  State<BigText> createState() => _BigTextState();
+}
+
+class _BigTextState extends State<BigText> {
+  bool flipped = false;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(widget.language),
+        actions: [
+          IconButton(
+            tooltip: 'Turn to face the other person',
+            icon: const Icon(Icons.screen_rotation_alt),
+            onPressed: () => setState(() => flipped = !flipped),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: Center(
+          child: RotatedBox(
+            quarterTurns: flipped ? 2 : 0,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width - 48),
+                  child: Text(widget.text,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 44, fontWeight: FontWeight.w600, height: 1.25)),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -777,3 +926,98 @@ class _LanguagePickerState extends State<LanguagePicker> {
 
 /// The recogniser writes without capitals; start the sentence with one.
 String sentenceCase(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+/// Translation packs on this phone: download before a trip (works offline
+/// after), delete to free space. The languages in use cannot be deleted here.
+class OfflineLanguages extends StatefulWidget {
+  const OfflineLanguages({super.key, required this.engine, required this.inUse});
+  final TranslationEngine engine;
+  final Set<String> inUse;
+  @override
+  State<OfflineLanguages> createState() => _OfflineLanguagesState();
+}
+
+class _OfflineLanguagesState extends State<OfflineLanguages> {
+  final ready = <String, bool>{};
+  final busy = <String>{};
+  String q = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    for (final l in allLanguages().where((l) => widget.engine.supports(l.code))) {
+      final r = await widget.engine.isReady(l.code);
+      if (!mounted) return;
+      setState(() => ready[l.code] = r);
+    }
+  }
+
+  Future<void> _toggle(Language l) async {
+    setState(() => busy.add(l.code));
+    try {
+      if (ready[l.code] == true) {
+        await widget.engine.delete(l.code);
+      } else {
+        await widget.engine.prepare(l.code);
+      }
+      ready[l.code] = await widget.engine.isReady(l.code);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+    if (mounted) setState(() => busy.remove(l.code));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final langs = allLanguages()
+        .where((l) => widget.engine.supports(l.code) && l.name.toLowerCase().contains(q.toLowerCase()))
+        .toList()
+      ..sort((a, b) => (ready[a.code] == true ? 0 : 1).compareTo(ready[b.code] == true ? 0 : 1));
+    final count = ready.values.where((v) => v).length;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Offline languages')),
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Text('$count on this phone. Download the languages of your trip while you have Wi-Fi: '
+              'after that, translation works with no connection. About 30 MB each.'),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: TextField(
+            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search languages'),
+            onChanged: (v) => setState(() => q = v.trim()),
+          ),
+        ),
+        Expanded(
+          child: ListView(children: [
+            for (final l in langs)
+              ListTile(
+                title: Text(l.name),
+                subtitle: Text(l.code == 'en'
+                    ? 'Built in'
+                    : ready[l.code] == true
+                        ? (widget.inUse.contains(l.code) ? 'On this phone · in use' : 'On this phone')
+                        : 'Not downloaded'),
+                trailing: busy.contains(l.code)
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                    : l.code == 'en'
+                        ? null
+                        : ready[l.code] == true
+                            ? IconButton(
+                                tooltip: 'Delete',
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: widget.inUse.contains(l.code) ? null : () => _toggle(l),
+                              )
+                            : IconButton(tooltip: 'Download', icon: const Icon(Icons.download), onPressed: () => _toggle(l)),
+              ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}

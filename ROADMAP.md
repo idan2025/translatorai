@@ -21,6 +21,11 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.4.0: speech model loads when the app opens with a status line; the microphone stays warm
+  between turns of a tap conversation (closes after 45 s idle); screen kept on while listening;
+  microphone released in the background; "Open settings" after a refused permission; bubbles:
+  tap to replay, long-press to copy, full-screen view with flip; Offline languages manager;
+  app icon.
 - 0.3.6: the last sentence is no longer lost when you stop (stop waited 0.3 s, writing takes
   1-4 s on a phone: "Writing it down…" then nothing, seen with Chinese); the speech model stays
   loaded between stop and start (was reloaded on every tap); the GPU switch no longer turns
@@ -82,4 +87,4 @@
    the phone has no voice for a language.
 6. **Face-to-face view.** Split screen, the other person's half upside down.
 7. **iOS.** All three libraries support it; needs a Mac to build.
-8. Store listing, an icon.
+8. Store listing, privacy policy page, screenshots; crash reporting that stays on-device.

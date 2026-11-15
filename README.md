@@ -1,5 +1,7 @@
 # TranslatorAI
 
+<img src="docs/icon-512.png" width="96" alt="">
+
 Live speech translation that runs entirely on the phone. No account, no
 subscription, no special headset: any phone, any earbuds.
 
@@ -17,6 +19,16 @@ download the models.
   The model is told the language, so it makes one pass per sentence and cannot
   pick the wrong one. (Settings can switch to detecting who speaks from the
   sound: slower, and it misjudges short phrases.)
+
+## In the app
+
+- **Tap a bubble** to hear the translation again, **long-press** to copy it, and use the
+  **full-screen** button to show it big (with a flip to face the person across the table).
+- **Offline languages** (⋮ › Settings): download the languages of a trip on Wi-Fi; translation
+  then works with no connection.
+- The speech model loads when the app opens (the status line says when it is ready), stays
+  loaded between turns, and the microphone stays warm between turns of a conversation.
+- The screen stays on while listening; the microphone is released when the app leaves the screen.
 
 ## How it works
 
@@ -88,6 +100,8 @@ copy signed with the same key.
 - `lib/src/pipeline.dart`: microphone → speech → translation → voice; direction logic
 - `lib/src/speaker.dart`: text-to-speech
 - `lib/src/languages.dart`, `models.dart`, `model_store.dart`, `settings.dart`
+- `tool/make_icon.py`: draws the launcher icon (vector + PNGs, stdlib only):
+  `python3 tool/make_icon.py android/app/src/main/res docs/icon-512.png`
 
 ## Build
 

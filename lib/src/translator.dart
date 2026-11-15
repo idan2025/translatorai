@@ -19,6 +19,9 @@ abstract class TranslationEngine {
 
   Future<String> translate(String text, {required String from, required String to});
 
+  /// Removes the model for [code] from the device.
+  Future<void> delete(String code);
+
   Future<void> close();
 }
 
@@ -59,6 +62,15 @@ class MlKitEngine extends TranslationEngine {
     }
     final t = _open.putIfAbsent('$from>$to', () => OnDeviceTranslator(sourceLanguage: src, targetLanguage: dst));
     return t.translateText(text);
+  }
+
+  @override
+  Future<void> delete(String code) async {
+    if (code == 'en') return; // built in: ML Kit translates through English
+    for (final k in _open.keys.where((k) => k.contains(code)).toList()) {
+      await _open.remove(k)?.close();
+    }
+    await _models.deleteModel(code);
   }
 
   @override

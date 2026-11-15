@@ -198,6 +198,33 @@ class LiveTranslator extends ChangeNotifier {
 
   bool _fellBack = false;
   Timer? _missedTimer;
+  Timer? _idleTimer;
+  Future<bool>? _loading;
+
+  /// The speech model: 'none', 'loading', 'ready' or 'failed'.
+  String modelState = 'none';
+
+  /// Loads the speech model now, before anyone taps, so the first tap is
+  /// instant. Safe to call again: a load in progress is shared.
+  Future<bool> preload(AsrConfig config) {
+    final have = _asr;
+    if (have != null && have.config.sameModel(config)) return Future.value(true);
+    return _loading ??= () async {
+      modelState = 'loading';
+      notifyListeners();
+      final ok = await _ensureWorker(config);
+      modelState = ok ? 'ready' : 'failed';
+      _loading = null;
+      notifyListeners();
+      return ok;
+    }();
+  }
+
+  /// A tap conversation keeps the microphone open between turns (no start-up
+  /// lag on the next tap), feeding nothing to the model while no side is
+  /// chosen, and closes it after this long without a tap.
+  static const idleClose = Duration(seconds: 45);
+  bool get tapMode => mode == Mode.conversation && !autoSpeaker;
 
   /// Sentences written down so far (any outcome): the GPU crash guard reads it.
   int decodes = 0;
@@ -237,7 +264,7 @@ class LiveTranslator extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (!await _ensureWorker(config)) {
+    if (!await preload(config)) {
       notifyListeners();
       return;
     }
@@ -256,6 +283,8 @@ class LiveTranslator extends ChangeNotifier {
       androidConfig: AndroidRecordConfig(manageBluetooth: false, audioSource: AndroidAudioSource.voiceRecognition),
     ));
     _micSub = stream.listen((bytes) {
+      // a tap conversation between turns: the microphone is open, nobody is speaking to it
+      if (tapMode && side == null) return;
       // never hear ourselves: drop the microphone while a translation plays
       if (DateTime.now().isBefore(_muteUntil)) return;
       if (_muted) {
@@ -304,12 +333,22 @@ class LiveTranslator extends ChangeNotifier {
   /// Tap conversation: listen for [which] ('mine' or 'theirs'). Starts the
   /// microphone if needed; tapping the active side again stops it.
   Future<void> tapSide(String which, AsrConfig config) async {
+    _idleTimer?.cancel();
     if (running && side == which) {
-      await stop();
+      // done speaking: write it down, keep the microphone warm for the next turn
+      side = null;
+      notifyListeners();
+      _idleTimer = Timer(idleClose, stop);
+      await _asr?.flushAndWait();
       return;
     }
     if (running) {
-      _asr?.flush(); // finish what the other side was saying under the old language
+      if (side != null) {
+        _asr?.flush(); // finish what the other side was saying under the old language
+      } else {
+        _asr?.reset(); // the microphone was idle: start clean
+        _decoder.reset();
+      }
       side = which;
       _applyPolicy();
       notifyListeners();
@@ -324,6 +363,7 @@ class LiveTranslator extends ChangeNotifier {
   /// translated (the old code waited 0.3 s and then threw it away), and the
   /// speech model stays loaded for the next start.
   Future<void> stop() async {
+    _idleTimer?.cancel();
     if (!running) return;
     running = false;
     hearing = false;
@@ -336,6 +376,21 @@ class LiveTranslator extends ChangeNotifier {
     _mic = null;
     await _asr?.flushAndWait();
     notifyListeners();
+  }
+
+  /// Reads a line's translation aloud again (tap on a bubble).
+  Future<void> replay(Line line) async {
+    final t = line.translation;
+    if (t == null || line.direction.from == line.direction.to) return;
+    _muteUntil = DateTime.now().add(const Duration(minutes: 1));
+    _muted = true;
+    _spoken.add((text: t, at: DateTime.now().add(const Duration(minutes: 1))));
+    try {
+      await speaker.say(t, line.direction.to);
+    } finally {
+      _muteUntil = DateTime.now().add(const Duration(milliseconds: 900));
+      _spoken.last = (text: t, at: DateTime.now());
+    }
   }
 
   void clear() {
@@ -416,6 +471,7 @@ class LiveTranslator extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _missedTimer?.cancel();
+    _idleTimer?.cancel();
     stop().whenComplete(_dropWorker); // the speech model leaves memory with the screen
     engine.close();
     guesser.close();
