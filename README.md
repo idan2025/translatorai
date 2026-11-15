@@ -28,6 +28,8 @@ download the models.
   then works with no connection.
 - The speech model loads when the app opens (the status line says when it is ready), stays
   loaded between turns, and the microphone stays warm between turns of a conversation.
+- **Words while you speak**: the sentence so far appears faded while you talk (Settings can turn it off).
+- **Hebrew speech pack** (Settings, 1 GB): ivrit.ai's Hebrew Whisper, used only when Hebrew is spoken.
 - The screen stays on while listening; the microphone is released when the app leaves the screen.
 
 ## How it works

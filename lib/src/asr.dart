@@ -19,6 +19,8 @@ class AsrConfig {
     this.threads = 2,
     this.provider = 'cpu',
     this.endSilence = 0.5,
+    this.vadThreshold = 0.3,
+    this.preRoll = 0.8,
   });
 
   final String vad, encoder, decoder, tokens;
@@ -32,8 +34,23 @@ class AsrConfig {
   /// pause inside a sentence then splits it.
   final double endSilence;
 
+  /// How sure the voice detector must be that it hears speech (0-1). Lower
+  /// finds quieter or more distant speech, and more noise.
+  final double vadThreshold;
+
+  /// Seconds of audio kept from before the detector noticed speech: it notices
+  /// late, and the first word would otherwise be cut.
+  final double preRoll;
+
   AsrConfig onCpu() => AsrConfig(
-      vad: vad, encoder: encoder, decoder: decoder, tokens: tokens, threads: threads, endSilence: endSilence);
+      vad: vad,
+      encoder: encoder,
+      decoder: decoder,
+      tokens: tokens,
+      threads: threads,
+      endSilence: endSilence,
+      vadThreshold: vadThreshold,
+      preRoll: preRoll);
 
   /// Whether a worker loaded with [o] can serve this config without a reload
   /// (the quiet length is changed on the fly).
@@ -87,7 +104,7 @@ class Asr {
       config: so.VadModelConfig(
         sileroVad: so.SileroVadModelConfig(
           model: config.vad,
-          threshold: 0.5,
+          threshold: config.vadThreshold,
           minSilenceDuration: endSilence, // a pause this long ends a sentence
           minSpeechDuration: 0.25,
           maxSpeechDuration: 10.0, // long monologues are cut so translation keeps up
@@ -130,6 +147,58 @@ class Asr {
 
   void setPolicy(LanguagePolicy p) => _policy = p;
 
+  // ---- partial results: the words so far of a sentence still being spoken
+
+  /// Show text while the person is still speaking (only when the language is
+  /// known in advance). Re-writes the sentence so far every second or two, so it
+  /// costs battery; it backs off by itself when the phone cannot keep up.
+  bool partials = false;
+
+  /// Called with the sentence so far ('' when the sentence is finished).
+  void Function(String text, String language)? onPartial;
+
+  int _speechStart = -1; // sample index where the sentence in progress is thought to have begun
+  int _lastPartialAt = 0; // sample count when the last partial started
+  double _lastPartialMs = 0;
+  double _msPerSecond = 0; // measured decode cost per second of audio (moving average)
+  var _shownPartial = false;
+
+  void _learnCost(int ms, int samples) {
+    final v = ms / (samples / sampleRate);
+    _msPerSecond = _msPerSecond == 0 ? v : 0.6 * _msPerSecond + 0.4 * v;
+  }
+
+  void _maybePartial() {
+    if (_speechStart < 0) return;
+    final now = _recent.total;
+    final length = (now - _speechStart) / sampleRate;
+    if (length < 1.5) return;
+    // never more often than a decode takes ×3, and never if the sentence so far costs over 2 s
+    final gap = (now - _lastPartialAt) / sampleRate;
+    if (gap < 1.2 || gap < 3 * _lastPartialMs / 1000) return;
+    if (_msPerSecond > 0 && _msPerSecond * length > 2000) return;
+    final audio = _recent.slice(_speechStart, now);
+    if (audio == null) return;
+    _lastPartialAt = now;
+    final sw = Stopwatch()..start();
+    final r = _decode(audio, _policy.force);
+    _lastPartialMs = sw.elapsedMilliseconds.toDouble();
+    _learnCost(sw.elapsedMilliseconds, audio.length);
+    final text = r.text;
+    if (text.isNotEmpty && plausible(text, length)) {
+      _shownPartial = true;
+      onPartial?.call(text, r.lang);
+    }
+  }
+
+  void _clearPartial() {
+    _speechStart = -1;
+    if (_shownPartial) {
+      _shownPartial = false;
+      onPartial?.call('', '');
+    }
+  }
+
   /// Told what the recogniser is doing: 'hearing', 'decoding', 'idle'.
   void Function(String phase)? onPhase;
   var _phase = 'idle';
@@ -146,6 +215,8 @@ class Asr {
   void reset() {
     _vad.reset();
     _recent.clear();
+    _clearPartial();
+    _lastPartialAt = 0;
   }
 
   /// Feeds audio (mono, 16 kHz, -1..1). Returns every utterance it completed.
@@ -153,7 +224,14 @@ class Asr {
     _recent.add(samples);
     _vad.acceptWaveform(samples);
     final out = _drain();
-    _setPhase(_vad.isDetected() ? 'hearing' : 'idle');
+    final speaking = _vad.isDetected();
+    if (out.isNotEmpty || !speaking) _clearPartial();
+    if (speaking && _speechStart < 0) {
+      // the detector notices speech late: it began a little before now
+      _speechStart = (_recent.total - ((config.preRoll + 0.6) * sampleRate).round()).clamp(0, _recent.total);
+    }
+    if (partials && speaking && _policy.force.isNotEmpty) _maybePartial();
+    _setPhase(speaking ? 'hearing' : 'idle');
     return out;
   }
 
@@ -183,7 +261,9 @@ class Asr {
           ? _recent.slice(seg.start - padBefore, seg.start + seg.samples.length + padAfter) ?? seg.samples
           : seg.samples;
       _setPhase('decoding');
+      _clearPartial();
       final h = transcribe(padded);
+      if (h != null) _learnCost(h.decodeMs, padded.length);
       if (h != null) out.add(h);
       // nothing came of it (silence, noise, or text that cannot have been said): say so
       _setPhase(h == null ? 'missed' : 'idle');
@@ -202,10 +282,19 @@ class Asr {
     return true;
   }
 
-  static const padBefore = sampleRate * 3 ~/ 10; // 300 ms
+  int get padBefore => (config.preRoll * sampleRate).round();
   static const padAfter = sampleRate * 2 ~/ 10; // 200 ms
 
+  /// Seconds of silence added after every sentence before it is decoded. Whisper
+  /// (as run by sherpa-onnx) drops the last word or two of audio that ends right
+  /// after the last word ("…אחד ב" for "…אחד בלבד"); a second or two of quiet brings
+  /// them back. Measured on FLEURS Hebrew: 28.3% of words wrong with none, 22.8% with
+  /// 1 s, 20.5% with 2 s. The cost is the decode time of that much extra audio.
+  static const tailSilence = 1.5;
+
   ({String text, String lang}) _decode(Float32List samples, String language) {
+    final withTail = Float32List(samples.length + (tailSilence * sampleRate).round())..setRange(0, samples.length, samples);
+    samples = withTail;
     if (language != _language) {
       _rec.setConfig(_cfg(language)); // same loaded model, new language: no reload
       _language = language;
@@ -261,6 +350,9 @@ class AudioRing {
     }
     _total += s.length;
   }
+
+  /// Samples ever added (the index the next sample will get).
+  int get total => _total;
 
   void clear() => _total = 0;
 
@@ -381,6 +473,11 @@ class AsrWorker {
   void setEndSilence(double seconds) => _toWorker.send(['silence', seconds]);
   void reset() => _toWorker.send('reset');
   void setPolicy(LanguagePolicy p) => _toWorker.send(p.toJson());
+  void setPartials(bool on) => _toWorker.send(['partials', on]);
+
+  /// The sentence so far, while it is still being spoken ('' when finished).
+  Stream<String> get partialText =>
+      _events.where((e) => e is List && e[0] == 'partial').map((e) => (e as List)[1] as String);
 
   void stop() {
     _toWorker.send('stop');
@@ -399,6 +496,7 @@ class AsrWorker {
       return;
     }
     asr.onPhase = (p) => out.send(['phase', p]);
+    asr.onPartial = (t, l) => out.send(['partial', t, l]);
     final inbox = ReceivePort();
     out.send(inbox.sendPort);
     inbox.listen((msg) {
@@ -407,6 +505,8 @@ class AsrWorker {
           for (final h in asr.accept(msg.materialize().asFloat32List())) {
             out.send(h);
           }
+        } else if (msg is List && msg.isNotEmpty && msg[0] == 'partials') {
+          asr.partials = msg[1] as bool;
         } else if (msg is List && msg.isNotEmpty && msg[0] == 'silence') {
           asr.setEndSilence((msg[1] as num).toDouble());
         } else if (msg is Map) {

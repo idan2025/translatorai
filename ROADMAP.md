@@ -21,6 +21,14 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.5.0: **Hebrew speech pack** (ivrit.ai Hebrew Whisper, 1 GB, Apache-2.0; used only when Hebrew is
+  spoken; the other language keeps the normal model); **1.5 s of silence after every sentence**
+  (sherpa-onnx's Whisper drops the last words of audio that ends abruptly: Hebrew words wrong
+  37.9% -> 30.6% on stock turbo, 28.3% -> 20.5% on the pack); a more sensitive voice detector with a
+  longer pre-roll (the detector found no speech in 3 of 40 Hebrew clips and started 1.1 s late);
+  **sentence joiner** (pieces split by a pause are translated as one sentence);
+  **words while you speak** (live partial text); **Translation quality test** (Settings) that scores
+  the on-device translator with chrF on 60 FLEURS sentences, comparable with desktop runs.
 - 0.4.1: fixes the settings staying locked after you tap a language off (the warm microphone
   counted as listening); Mic off button; v2 + v3 signing, no cloud backup, no cleartext traffic;
   PRIVACY.md and SECURITY.md with the signing fingerprint.
@@ -56,6 +64,15 @@
 - v0.3 on a real phone: Whisper small/turbo speed and memory, the language policy on
   real speech, and the update flow end to end (first update from 0.2 to 0.3).
 - v0.1 was tried on a phone by the user: it ran; Whisper misheard languages (fixed in 0.2).
+
+## Translation engines (measured on desktop, 60 FLEURS sentences, chrF, higher is better)
+
+| Engine | he->en | en->he | ru->en | en->ru | Size | Licence |
+| --- | --- | --- | --- | --- | --- | --- |
+| Opus-MT (tc-big he-en; base for the rest) | 68.9 | 57.7 | 59.8 | 55.2 | ~75-300 MB per direction | CC-BY 4.0 / Apache-2.0 |
+| M2M-100 418M | 62.0 | 50.7 | 58.7 | 53.4 | ~450 MB | MIT |
+| Google ML Kit (the app's engine) | run Settings > Translation quality test | | | | ~30 MB per language | ML Kit terms |
+| NLLB-200 | not used | | | | | CC-BY-NC: cannot ship in a paid app |
 
 ## Next
 

@@ -1,0 +1,365 @@
+{
+"source": "Google FLEURS (CC-BY-4.0), dev split, sentences also in FLORES-101",
+"sentences": [
+{
+"id": "1510",
+"he": "\"האו\"\"ם מקווה גם לגבש סופית קרן שתסייע למדינות שנפגעו מההתחממות הגלובלית להתמודד עם ההשפעות.\"",
+"en": "The U.N. also hopes to finalize a fund to help countries affected by global warming to cope with the impacts.",
+"ru": "ООН также надеется завершить создание фонда помощи странам, страдающим от глобального потепления, для борьбы с его последствиями."
+},
+{
+"id": "1511",
+"he": "עד מהרה קצינים מצוידים בציוד לפיזור מהומות נכנסו לחצר ודחקו את האסירים לפינה באמצעות גז מדמיע.",
+"en": "Soon, officers equipped with riot gear entered the yard and cornered the inmates with tear gas.",
+"ru": "Вскоре надзиратели в защитном снаряжении прошли во двор и загнали заключенных в угол, применив слезоточивый газ."
+},
+{
+"id": "1512",
+"he": "בסביבה חדשה זו יש משאבים שונים ומתחרים שונים, כך שהאוכלוסייה החדשה תזדקק לתכונות או התאמות שונות מאלה שנדרשו להם בעבר כדי להיות מתחרה חזקה.",
+"en": "This new environment has different resources and different competitors, so the new population will need different features or adaptations to be a strong competitor than what they had needed before.",
+"ru": "У этой новой среды есть другие ресурсы и другие конкуренты, поэтому новой популяции будут необходимы другие характеристики или изменения, по сравнению с теми, которые у неё были раньше, чтобы стать сильным соперником."
+},
+{
+"id": "1513",
+"he": "ארגנטינה ידועה היטב בקבוצת הפולו ובשחקנים שלה שהם מהטובים ביותר בעולם.",
+"en": "Argentina is well known for having one of the best polo teams and players in the world.",
+"ru": "Аргентина известна тем, что у неё одна из лучших команд, а также лучшие игроки в мире в таком виде спорта, как поло."
+},
+{
+"id": "1514",
+"he": "כאשר הלחימה פסקה לאחר שהפצועים הועברו אל בית החולים, כ-40 מן האסירים האחרים שנותרו נשארו בחצר וסרבו לחזור אל תאיהם.",
+"en": "When the fighting ceased after the wounded were transported to the hospital, about 40 of the other remaining inmates stayed in the yard and refused to return to their cells.",
+"ru": "Когда драка прекратилась, после того как раненые были доставлены в больницу, еще около 40 заключенных остались во дворе и отказались возвращаться в свои камеры."
+},
+{
+"id": "1515",
+"he": "זוהי מועצת הבחירות הזמנית (CEP)  החמישית של מרטלי בארבע שנים.",
+"en": "It is Martelly's fifth CEP in four years.",
+"ru": "Это пятый CEP Мартейи за четыре года."
+},
+{
+"id": "1516",
+"he": "אנא התייחסו לאתר בכל הכבוד, הרצינות והכבוד שמגיעים לו. אל תתבדחו על השואה או על נאצים.",
+"en": "Please treat the site with all of the dignity, solemnity and respect it deserves. Do not make jokes about the Holocaust or Nazis.",
+"ru": "Пожалуйста, относитесь к этому месту со всем достоинством, серьёзностью и уважением, которых оно заслуживает. Не шутите про Холокост и нацистов."
+},
+{
+"id": "1517",
+"he": "מחקר בבינה מלאכותית כולל פיתוח מכונות לצורך אוטומציה של משימות הדורשות התנהגות תבונית.",
+"en": "Research in AI involves making machines to automate tasks that require intelligent behavior.",
+"ru": "Исследования в области ИИ включают в себя создание машин для автоматизации задач, требующих интеллектуального поведения."
+},
+{
+"id": "1519",
+"he": "\"במקרים רבים, הרשמה לקורס במהלך שנת גשר בחו\"\"ל עשויה למעשה לשפר את סיכוייך לעבור ללימודים גבוהים במדינה שלך.\"",
+"en": "In many cases, enrolling on a gap-year course abroad can actually improve your chances of moving into higher education back in your home country.",
+"ru": "Во многих случаях поступление на какой-либо курс за границей во время академического отпуска действительно может повысить ваши шансы на поступление в высшие учебные заведения на родине."
+},
+{
+"id": "1520",
+"he": "מתוך 1,400 איש שהשיבו לסקר לפינ הבחירות הפדרליות ב-2010, מספר המתנגדים לכך שאוסטרליה תהפוך לרפובליקה עלה ב-8 אחוזים מאז 2008.",
+"en": "Out of 1,400 people polled prior to the 2010 federal election, those who oppose Australia becoming a republic grew by 8 per cent since 2008.",
+"ru": "Из 1400 человек, опрошенных в преддверии федеральных выборов 2010 года, число тех, кто выступает против того, чтобы Австралия стала республикой, выросло с 2008 года на 8 процентов."
+},
+{
+"id": "1521",
+"he": "הלוויין בחלל מקבל את השיחה ואז מעביר אותה בחזרה למטה, באופן כמעט מיידי.",
+"en": "The satellite in space gets the call and then reflects it back down, almost instantly.",
+"ru": "Спутник в космосе принимает звонок и практически мгновенно отражает его обратно вниз."
+},
+{
+"id": "1522",
+"he": "טכנולוגיה מספקת את הפתרון באמצעות טיולי שטח וירטואליים. תלמידים יכולים להביט במוצגים מוזאוניים, לבקר באקווריום, או להשתאות מול אמנות יפה תוך כדי ישיבה לצד בני כיתתם.",
+"en": "Technology offers the solution with virtual field trips. Students can look at museum artifacts, visit an aquarium, or admire beautiful art while sitting with their class.",
+"ru": "Технология предлагает решение при помощи виртуальных экскурсий. Учащиеся могут осматривать музейные экспонаты, посещать аквариум или наслаждаться прекрасным искусством, сидя со своим классом."
+},
+{
+"id": "1523",
+"he": "התוצאה הסופית הייתה ניצחון בנקודה אחת, 21 לעומת 20, שקטעה רצף של 15 ניצחונות של All Blacks.",
+"en": "The final score was a one-point victory, 21 to 20, ending the All Blacks' 15 game winning streak.",
+"ru": "Окончательным счётом стала победа в одно очко, 21 к 20, что закончило победную серию All Black в 15-ти играх."
+},
+{
+"id": "1524",
+"he": "יש הרבה השפעות חברתיות ופוליטיות, כמו השימוש בשיטה המטרית, מעבר מאבסולוטיזם לרפובליקניזם, הלאומנות והאמונה שהמדינה שייכת לעם ולא לשליט אחד בלבד.",
+"en": "There are a lot of social and political effects such as the use of metric system, a shift from absolutism to republicanism, nationalism and the belief the country belongs to the people not to one sole ruler.",
+"ru": "Существует множество таких социальных и политических эффектов, как использование метрической системы, переход от абсолютизма к республиканизму, национализм и вера в то, что страна принадлежит народу, а не единоличному правителю."
+},
+{
+"id": "1525",
+"he": "השדרות הרחבות, הבניינים עם חזיתות הזכוכית ומרכזי הקניות המודרניים מנוקדים בגגות אדומים מסורתיים, השוק מהמאה ה-18 ומסגדים וכנסיות עתיקים, אם כי בעיר יש יותר אווירה של אירופה הים תיכונית מאשר טורקיה המסורתית.",
+"en": "The broad boulevards, glass-fronted buildings and modern shopping centers are dotted with traditional red-tiled roofs, the 18th century market, and old mosques and churches, although the city has an atmosphere more of Mediterranean Europe than traditional Turkey.",
+"ru": "Широкие бульвары, здания со стеклянными фасадами современные торговые центры перемежаются местами  с традиционными крышами с красной черепицей, рынком XVIII века, старыми мечетями и церквями, хотя город и имеет больше атмосферу средиземноморской Европы, чем традиционной Турции."
+},
+{
+"id": "1526",
+"he": "אם תבקרו בקוטב הצפוני או הדרומי בחורף תחוו ליל קוטב, שפירושו שהשמש לא עולה מעל קו האופק.",
+"en": "If you visit the Arctic or Antarctic areas in the winter you will experience the polar night, which means that the sun doesn't rise above the horizon.",
+"ru": "Если вы посетите Арктику или Антарктику зимой, вы узнаете, что такое полярная ночь, когда солнце не поднимается над горизонтом."
+},
+{
+"id": "1527",
+"he": "הגולש הפולני לקוי הראייה, מאצ'יי קרז'ל, והמדריכה אנה אוגארזינסקה סיימו במקום ה-13 ב-Super-G. ג'ונג סורק פארק מדרום קוריאה סיים במקום ה-24 ב-Super-G בישיבה לגברים.",
+"en": "Poland's men's visually impaired skier Maciej Krezel and guide Anna Ogarzynska finished thirteenth in the Super-G. South Korea's Jong Seork Park finished twenty-fourth in the men's sitting Super-G.",
+"ru": "Польский лыжник с нарушением зрения Мацей Крезель и спортсмен-ведущий Анна Огаржинска финишировали тринадцатыми в супергиганте. Южнокорейский лыжник Пак Чон Сок финишировал двадцать четвёртым в супергиганте среди мужчин в положении сидя."
+},
+{
+"id": "1528",
+"he": "חלק מהפסטיבלים מציעים אזורי קמפינג מיוחדים עבור משפחות עם ילדים.",
+"en": "Some festivals have special camping areas for families with young children.",
+"ru": "На некоторых фестивалях есть специальные  зоны кемпингов для семей с малолетними детьми."
+},
+{
+"id": "1529",
+"he": "\"בעבר, מנכ\"\"ל Ring, ג'יימי סימינוף, ציין שהחברה הוקמה כאשר לא ניתן היה לשמוע את פעמון הדלת שלו מפינת העבודה שלו בחנייה.\"",
+"en": "Previously, Ring's CEO, Jamie Siminoff, remarked the company started when his doorbell wasn't audible from his shop in his garage.",
+"ru": "Ранее генеральный директор Ring Джейми Симинофф отметил, что эта компания началась с того, что он не слышал дверного звонка в мастерской своего гаража."
+},
+{
+"id": "1530",
+"he": "הוא היה אמור להיכרת ביום שלישי, אבל הוא ניצל לאחר פסיקת חירום של בית המשפט.",
+"en": "It had been scheduled to be cut down on Tuesday, but was saved after an emergency court ruling.",
+"ru": "Его планировали срубить во вторник, но постановлением чрезвычайного суда оно было сохранено."
+},
+{
+"id": "1531",
+"he": "איי מזרח אפריקה נמצאים באוקיינוס ההודי סמוך לחוף המזרחי של אפריקה.",
+"en": "The East African Islands are in the Indian Ocean off the eastern coast of Africa.",
+"ru": "Восточно-африканские острова находятся в Индийском океане у восточного побережья Африки."
+},
+{
+"id": "1532",
+"he": "108 צלחות של צ'פאן בוג (בהינדואיזם, 56 פריטי מאכל שונים, כגון ממתקים, פירות, אגוזים, מנות וכו' המוצעות כמנחה לאל) הוגשו לבאבא שיאם.",
+"en": "108 plates of Chhappan Bhog (in Hinduism, 56 different edible items, like, sweets, fruits, nuts, dishes etc. which are offered to deity) were served to Baba Shyam.",
+"ru": "Баба Шьям были поданы 108 тарелок чаппан-бхог (в индуизме — 56 различных яств, включая сладости, фрукты, орехи и другие блюда, преподносимые божеству)."
+},
+{
+"id": "1533",
+"he": "פורמטים נפוצים רבים (משפחת הפורמטים APS, למשל) שווים או קרובים ליחס הרוחב-גובה הזה.",
+"en": "Many common formats (APS family of formats, for example) are equal to or closely approximate this aspect ratio.",
+"ru": "Многие распространенные форматы (например семейство форматов APS) равны или близко приближаются к этим пропорциям."
+},
+{
+"id": "1534",
+"he": "\"בשילוב עם חוסר-הנגישות היחסי שלה, \"\"טימבוקטו\"\" החלה לשמש כמטאפורה לארצות אקזוטיות ומרוחקות.\"",
+"en": "Combined with its relative inaccessibility, \"Timbuktu\" has come to be used as a metaphor for exotic, distant lands.",
+"ru": "В связи со своей относительной недоступностью, \"Тимбукту\" стал метафорой экзотической дальней земли."
+},
+{
+"id": "1535",
+"he": "\"היא משתמשת בטכנולוגיה מבוססת לוויין בניגוד לטכנולוגיה ישנה יותר מבוססת מכ\"\"ם קרקעי, כדי לאפשר לפקחי הטיסה לאתר מטוסים ביתר דיוק ולתת לטייסים מידע מדויק יותר.\"",
+"en": "It uses satellite-based technology as opposed to older ground-radar-based technology to allow air traffic controllers to pinpoint aircraft with greater precision and give pilots more accurate information.",
+"ru": "Она использует спутниковую технологию вместо старой технологии на основе наземных РЛС, что позволит авиадиспетчерам точнее определять положение самолетов и давать пилотам более точную информацию."
+},
+{
+"id": "1536",
+"he": "רשויות מקומיות מזהירות תושבים בקרבת המפעל להישאר בבתיהם, לכבות מזגנים ולא לשתות מי ברז.",
+"en": "Local authorities are warning residents in the vicinity of the plant to stay indoors, turn off air-conditioners and not to drink tap water.",
+"ru": "Местные власти предупреждают жителей, проживающих поблизости от станции, о необходимости оставаться в помещениях, выключить кондиционеры и не пить воду из-под крана."
+},
+{
+"id": "1537",
+"he": "אפשר לראות את הפירמידות בחושך ואפשר לראות אותן בדממה לפני תחילת המופע.",
+"en": "You can see the pyramids in the dark and you can see them in silence before the show begins.",
+"ru": "Пирамиды можно увидеть в темноте, и вы также можете увидеть их в тишине перед началом шоу."
+},
+{
+"id": "1538",
+"he": "המקטע בין פוינט מריון לפיירמונט מציג את תנאי הנהיגה המאתגרים ביותר בכביש המהיר באפלו-פיטסבורג, והוא עובר לעתים קרובות דרך ארץ שוממה ומבודדת.",
+"en": "The stretch between Point Marion and Fairmont presents the most challenging driving conditions on the Buffalo-Pittsburgh Highway, passing frequently through isolated backwoods terrain.",
+"ru": "Отрезок между Поинт-Марионом и Фермоном имеет наиболее трудные условия вождения на шоссе Буффало-Питсбург, часто проходя через изолированную глухую и лесную местность."
+},
+{
+"id": "1539",
+"he": "חברים של תת-תרבות בדרך כלל מסמנים את חברותם באמצעות שימוש ייחודי וסימבולי בסגנון הכולל אופנה, גינונים וסלנג.",
+"en": "Members of a subculture often signal their membership through a distinctive and symbolic use of style, which includes fashions, mannerisms, and argot.",
+"ru": "Представители определенной субкультуры зачастую заявляют о своей принадлежности через своеобразное и символичное использование стиля, в том числе через моду, манеры и жаргон."
+},
+{
+"id": "1540",
+"he": "בעיקרון הבודהיזם הטיבטי פשוט מאוד. הוא כולל את קונדליני יוגה, מדיטציה ושביל האהבה החובקת-כול.",
+"en": "In principle the Tibetan Buddhism is very simple. It consists of Kundalini Yoga, meditation and the path of all-embracing love.",
+"ru": "Принцип тибетского буддизма очень прост. Он состоит из кундалини-йоги, медитации и пути всепоглощающей любви."
+},
+{
+"id": "1541",
+"he": "חברות שליחויות מקבלות שכר טוב עבור מסירת דברים במהירות. לעתים קרובות, זמן הוא גורם חשוב מאוד כשמדובר במסמכים עסקיים, סחורה או חלקי חילוף לתיקונים דחופים.",
+"en": "Courier companies are well paid for delivering things quickly. Frequently, time is very important with business documents, merchandise or spare parts for an urgent repair.",
+"ru": "Службам доставки хорошо платят за быстрое выполнение доставки. Часто скорость доставки коммерческой документации, товара или запасных частей для срочного ремонта очень важна."
+},
+{
+"id": "1542",
+"he": "\"דוברו של בוש, גורדון ג'ונדרו, כינה את התחייבותה של צפון קוריאה \"\"צעד חשוב בדרך למטרה של השגת פירוק מנשק גרעיני, ניתן לאימות,  של חצי האי הקוריאני.\"\"\"",
+"en": "Bush spokesman Gordon Johndroe called North Korea's pledge \"a major step towards the goal of achieving the verifiable denuclearization of the Korean peninsula.\"",
+"ru": "Представитель Буша Гордон Джондро назвал обещание Северной Кореи \"большим шагом на пути к цели по достижению поддающегося проверке ядерного разоружения Корейского полуострова\"."
+},
+{
+"id": "1543",
+"he": "החולה היה בניגריה, שם התרחשו מספר מקרים של נגיף האבולה.",
+"en": "The patient had been to Nigeria, where some cases of the Ebola virus have occurred.",
+"ru": "Больной посещал Нигерию, где обнаружен ряд случаев инфицирования вирусом Эбола."
+},
+{
+"id": "1544",
+"he": "חרקים היו בעלי החיים הראשונים לעלות לאוויר. יכולת התעופה שלהם עזרה להם להתחמק מאויבים בקלות רבה יותר ולמצוא מזון ובני זוג ביעילות גדולה יותר.",
+"en": "Insects were the first animals to take to the air. Their ability to fly helped them evade enemies more easily and find food and mates more efficiently.",
+"ru": "Насекомые были первыми животными, поднявшимися в воздух. Их способность летать помогала им легче ускользать от врагов, находить еду и партнеров."
+},
+{
+"id": "1545",
+"he": "\"קארי יכול להיות \"\"יבש\"\" או \"\"רטוב\"\" בהתאם לכמות הנוזלים.\"",
+"en": "A curry can be either \"dry\" or \"wet\" depending on the amount of liquid.",
+"ru": "В зависимости от содержания жидкости, карри может быть \"сухим\" или \"мокрым\"."
+},
+{
+"id": "1546",
+"he": "מבנה הנוצות מרמז שהן לא שימשו לתעופה אלא לבקרת טמפרטורה או לתצוגה. החוקרים מציעים שלמרות שזהו זנב של דינוזאור צעיר, הדוגמית מראה נוצות של בעל חיים בוגר ולא פלומה של אפרוח.",
+"en": "The feathers' structure suggests that they were not used in flight but rather for temperature regulation or display. The researchers suggested that, even though this is the tail of a young dinosaur, the sample shows adult plumage and not a chick's down.",
+"ru": "Структура перьев наводит на мысль, что они не использовались для полёта, а скорее для регуляции температуры и демонстрирования. Исследователи предположили, что хотя это и хвост молодого динозавра, но в образце представлено взрослое оперение, а не пух цыплёнка."
+},
+{
+"id": "1548",
+"he": "כשאתם מתקשרים למישהו שנמצא אלפי קילומטרים מכם, אתם משתמשים בלוויין.",
+"en": "When you call someone who is thousands of miles away, you are using a satellite.",
+"ru": "Когда вы звоните кому-то за тысячи миль от вас, вы используете спутник."
+},
+{
+"id": "1549",
+"he": "תיאוריות אלה מצביעות על כך שלאנשים יש צרכים ו/או רצונות מסוימים שהם מפנימים ככל שהם מתבגרים.",
+"en": "These theories suggest that people have certain needs and/or desires which have been internalized as they mature to adulthood.",
+"ru": "Эти теории предполагают, что у людей есть определённые потребности и/или желания, которые накапливаются внутри в процессе взросления."
+},
+{
+"id": "1550",
+"he": "\"סקי הוא פעילות טיולים מרכזית עם חובבים רבים, המכונים לפעמים \"\"בטלני סקי,\"\" שמתכננים חופשות שלמות סביב סקי במקום מסוים.\"",
+"en": "Skiing is a major travelling activity with many enthusiasts, occasionally known as \"ski bums,\" planning entire vacations around skiing at a particular location.",
+"ru": "Горные лыжи — это главное туристическое направление для многих любителей лыж (их еще иногда называют \"лыжными бездельниками\"), планирующих отдых целиком вокруг катания в определенном месте."
+},
+{
+"id": "1551",
+"he": "הם עדיין מנסים לקבוע את ממדי ההתרסקות וכיצד יושפע ממנה כדור הארץ.",
+"en": "They are still trying to determine just how large the crash was and how the Earth will be affected.",
+"ru": "Они по-прежнему стараются определить, насколько большим было столкновение и как пострадает Земля."
+},
+{
+"id": "1552",
+"he": "תוצאות ניתוח הגרף יפורסמו באתר אינטרנט ציבורי.",
+"en": "The result of plotting analysis will be posted to a public website.",
+"ru": "Результаты анализа графиков будут размещены на общедоступном сайте."
+},
+{
+"id": "1553",
+"he": "חג המולד הוא אחד החגים החשובים ביותר בנצרות, והוא מסמל את לידתו של ישו.",
+"en": "Christmas is one of the most important holidays of Christianity, and is celebrated as the birthday of Jesus.",
+"ru": "Рождество – это один из наиболее важных праздников в христианстве, и оно отмечается как день рождения Иисуса."
+},
+{
+"id": "1554",
+"he": "הוא בנה פעמון WiFi  לדלת, כך אמר.",
+"en": "He built a WiFi door bell, he said.",
+"ru": "Он сказал, что создал дверной звонок, работающий от WiFi."
+},
+{
+"id": "1555",
+"he": "בחצר הכנסייה יש פסלי שיש מעניינים של יונים מעל כמה קברים.",
+"en": "In the churchyard, there are interesting marble sculptures of doves over some tombs.",
+"ru": "На церковном кладбище над некоторыми могилами есть интересные мраморные скульптуры голубей."
+},
+{
+"id": "1556",
+"he": "\"הבול ה-1,000 שלו היה ה\"\"Great Deeds by Swedish Kings\"\" המרהיב מאת דייויד קלוקר אהרנשטרל בשנת 2000, אשר מדורג בספר השיאים של גינס.\"",
+"en": "His 1,000th stamp was the magnificent \"Great Deeds by Swedish Kings\" by David Klöcker Ehrenstrahl in 2000, which is listed in the Guinness Book of World Records.",
+"ru": "Его великолепная тысячная марка 2000-го  года воспроизводит \"Великие деяния шведских королей\" Давида-Клёккера Эрнестраля, она внесена в книгу мировых рекордов Гиннеса."
+},
+{
+"id": "1557",
+"he": "לאחר שראו את האימה ואת זוועות המלחמה במלחמת העולם הראשונה, מדינות רצו למנוע הישנותו של מצב כזה בעתיד.",
+"en": "After seeing the horrors and atrocities of war during World War I, nations desired to avoid such a situation again in the future.",
+"ru": "Познав ужасы и зверства Первой мировой войны, государства хотели избежать подобной ситуации в будущем."
+},
+{
+"id": "1558",
+"he": "לפני שארגון יכול להיות חדשני, על ההנהגה ליצור תרבות של חדשנות וכן ידע משותף ולימוד ארגוני.",
+"en": "Before an organization can be innovative, leadership must create a culture of innovation as well as shared knowledge and organizational learning.",
+"ru": "Прежде чем организация сможет стать инновационной, руководители должны создать культуру новаторства, обмена знаниями и накопления опыта."
+},
+{
+"id": "1559",
+"he": "ההגייה באיטלקית קלה יחסית משום שרוב המלים מבוטאות בדיוק כפי שהן נכתבות",
+"en": "Pronunciation is relatively easy in Italian since most words are pronounced exactly how they are written",
+"ru": "Произношение в итальянском языке относительно простое, так как большая часть слов произносится ровно так, как пишется."
+},
+{
+"id": "1560",
+"he": "ברגע שיוצאים מהזרם, השחייה חזרה אינה קשה מהרגיל.",
+"en": "As soon as you get out of the current, swimming back is no more difficult than normally.",
+"ru": "Как только вы выйдете из течения, плыть обратно будет не труднее, чем обычно."
+},
+{
+"id": "1561",
+"he": "רוב המחוזות מקבלים שירות באמצעות מיניבוסים יפניים קטנים, שהם נוחים ועמידים.",
+"en": "Most districts are served by small Japanese Coaster Buses, which are comfortable and sturdy.",
+"ru": "Большинство районов обслуживается небольшими японскими автобусами Coaster, удобными и надежными."
+},
+{
+"id": "1562",
+"he": "זה נהפך לנוהל מקובל, אך הברזל שחק עוד יותר את גלגלי העץ של העגלות.",
+"en": "This became common practice, but the iron caused more wear on the wooden wheels of the wagons.",
+"ru": "Это стало общепринятой практикой, но железо приводило к большему износу деревянных колёс вагонов."
+},
+{
+"id": "1563",
+"he": "החוקרים הציעו, למרות שזהו זנב של דינוזאור צעיר, שהדגימה מראה פלומת נוצות של בוגר ולא פלומה של אפרוח.",
+"en": "The researchers suggested that, even though this is the tail of a young dinosaur, the sample shows adult plumage and not a chick's down.",
+"ru": "Исследователи предположили, что, несмотря на то, что это хвост молодого динозавра, данный образец имеет оперение взрослой особи, а не пух цыплёнка."
+},
+{
+"id": "1564",
+"he": "\"ד\"\"ר מול חושב כי כמה מהחולים נדבקו בחיידק בבית החולים, ולפחות שניים היו מצוותי הרפואה של בית החולים.\"",
+"en": "Some patients might have contracted the bug in the hospital, Dr. Moll thinks, and at least two were hospital health workers.",
+"ru": "Некоторые пациенты могли заразиться в больнице, думает доктор Молл, и по крайней мере двое были работниками здравоохранения в больнице."
+},
+{
+"id": "1565",
+"he": "מטרתו העיקרית של המדע היא לגלות כיצד העולם פועל באמצעות השיטה המדעית. שיטה זו מנחה, למעשה, את רוב המחקר המדעי.",
+"en": "Science’s main goal is to figure out the way the world works through the scientific method. This method in fact guides most scientific research.",
+"ru": "Главная цель науки — это выяснить, каким образом устроен мир, применив научный метод. Этот метод фактически лежит в основе большинства научных исследований."
+},
+{
+"id": "1566",
+"he": "למרות זאת, 80% מהמוצרים שלנו חויבו במס לפי תעריפים של מדינות מרכז אמריקה. אנו דואגים לכם.",
+"en": "Yet eighty percent of our goods were taxed through tariffs in Central American countries. we treat you.",
+"ru": "Тем не менее, восемьдесят процентов наших товаров облагалось налогом согласно тарифам в странах Центральной Америки."
+},
+{
+"id": "1567",
+"he": "הטורניר הגדול בשנה נערך בדצמבר במגרשי הפולו של לאס קניטאס.",
+"en": "The largest tournament of the year takes place in December at the polo fields in Las Cañitas.",
+"ru": "Крупнейший турнир года проходит в декабре на полях для игры в поло в Лас Каньитас."
+},
+{
+"id": "1568",
+"he": "\"אף שהיא נמצאת בשימוש נרחב, במיוחד בקרב אנשים שאינם רומאנים, המילה \"\"צועני\"\" נחשבת לרוב כפוגענית בגלל האסוציאציות שהיא מעלה לסטראוטיפים שליליים ותפיסות לא מדויקות של אנשים רומאנים.\"",
+"en": "Though it is widely used, especially among non-Romani, the word \"Gypsy\" is often considered offensive because of its associations with negative stereotypes and inaccurate perceptions of Romani people.",
+"ru": "Хотя слово \"Gypsy\" широко используется, особенно среди нецыган, оно часто считается обидным из-за ассоциаций, связанных с негативными стереотипами и неверными представлениями о цыганском народе."
+},
+{
+"id": "1569",
+"he": "\"הדוח נפתח בבקשה לדיון גלוי ולהשגת קונצנזוס בארה\"\"ב בנוגע למדיניות כלפי המזרח התיכון.\"",
+"en": "The Report opens with plea for open debate and the formation of a consensus in the United States about the policy towards the Middle East.",
+"ru": "Доклад открывается призывом к проведению открытых обсуждений и формированию консенсуса в Соединённых Штатах насчёт политики в отношении Ближнего Востока."
+},
+{
+"id": "1570",
+"he": "ולא הייתה לה סמכות לעקוף את חוקי המס והתעריפים בין מדינות.",
+"en": "It also had no authority to override tax laws and tariffs between states.",
+"ru": "У него также не было полномочий отменять налоговое законодательство и тарифы штатов."
+},
+{
+"id": "1571",
+"he": "הערבים גם הביאו את האיסלם לארצות, והוא קנה אחיזה נרחבת בקומורו ובמיוט.",
+"en": "The Arabs also brought Islam to the lands, and it took in a big way in the Comoros and Mayotte.",
+"ru": "Арабы также принесли в этот регион ислам, особенно он укоренился на Коморах и Майотте."
+}
+]
+}

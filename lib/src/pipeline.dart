@@ -5,6 +5,7 @@ import 'package:record/record.dart';
 
 import 'asr.dart';
 import 'languages.dart';
+import 'joiner.dart';
 import 'lid.dart';
 import 'speaker.dart';
 import 'translator.dart';
@@ -95,6 +96,11 @@ int _editDistance(String a, String b) {
   return prev[b.length];
 }
 
+/// Which recogniser handles a language: the Hebrew pack for Hebrew when it is
+/// installed, the main model for everything else.
+String modelKeyFor(String? language, {required bool hasHebrewPack}) =>
+    language == 'he' && hasHebrewPack ? 'he' : 'main';
+
 /// Whether settings must stay locked: really listening. A tap conversation
 /// waiting between turns (microphone ready, no side tapped) is not busy.
 bool listeningBusy({required bool running, required bool tapMode, String? side}) =>
@@ -146,9 +152,43 @@ class LiveTranslator extends ChangeNotifier {
   /// What the recogniser is doing: 'hearing', 'decoding' or 'idle'.
   String phase = 'idle';
 
-  AsrWorker? _asr;
+  /// The words so far of the sentence being spoken ('' when none).
+  String partial = '';
+
+  /// Show [partial] while speaking (only where the language is known in advance).
+  bool _partials = true;
+  bool get showPartials => _partials;
+  set showPartials(bool v) {
+    _partials = v;
+    for (final w in _workers.values) {
+      w.setPartials(v);
+    }
+    if (!v) partial = '';
+  }
+
+  /// Loaded recognisers by key ('main', and 'he' when the Hebrew pack is installed).
+  final _workers = <String, AsrWorker>{};
+  final _subs = <String, List<StreamSubscription>>{};
+
+  /// What to load: set by the screen from the installed models.
+  Map<String, AsrConfig> configs = const {};
+
+  bool get hasHebrewPack => configs.containsKey('he');
+
+  /// The language being listened for right now (a tapped side, or Listen's
+  /// picked language), or null when it is not known in advance.
+  String? get activeLanguage {
+    if (mode == Mode.listen) return listenFrom.isEmpty ? null : listenFrom;
+    if (!autoSpeaker && side != null) return side == 'mine' ? mine : theirs;
+    return null;
+  }
+
+  String get activeKey => modelKeyFor(activeLanguage, hasHebrewPack: hasHebrewPack);
+
+  AsrWorker? get _asr => _workers[activeKey] ?? _workers['main'];
+
   AudioRecorder? _mic;
-  StreamSubscription? _micSub, _heardSub, _errSub, _phaseSub;
+  StreamSubscription? _micSub;
   final _decoder = Pcm16Decoder();
   Future<void> _queue = Future.value();
   Future<void> _ids = Future.value();
@@ -162,20 +202,19 @@ class LiveTranslator extends ChangeNotifier {
   /// slow for the speech model chosen.
   bool get behind => _waiting >= 3;
 
-  /// Loads the speech model, or keeps the one already loaded when it is the
-  /// same: the model stays in memory between stop and start (loading the
-  /// 1 GB one takes seconds), and goes when this translator is disposed or a
-  /// different model is asked for.
-  Future<bool> _ensureWorker(AsrConfig config) async {
-    final have = _asr;
+  /// Loads one recogniser, or keeps the one already loaded when it is the same:
+  /// models stay in memory between stop and start (loading the 1 GB one takes
+  /// seconds) and go when this translator is disposed or another is asked for.
+  Future<bool> _ensureWorker(String key, AsrConfig config) async {
+    final have = _workers[key];
     if (have != null && (have.config.sameModel(config) || (_fellBack && have.config.sameModel(config.onCpu())))) {
       have.setEndSilence(config.endSilence);
       return true;
     }
-    await _dropWorker();
-    _fellBack = false;
+    await _dropWorker(key);
+    AsrWorker? w;
     try {
-      _asr = await AsrWorker.start(config);
+      w = await AsrWorker.start(config);
     } catch (e) {
       if (config.provider == 'cpu') {
         error = '$e';
@@ -184,20 +223,28 @@ class LiveTranslator extends ChangeNotifier {
       // the hardware route would not load this model: carry on with the CPU
       notice = 'The GPU could not run this model; using the CPU.';
       try {
-        _asr = await AsrWorker.start(config.onCpu());
+        w = await AsrWorker.start(config.onCpu());
         _fellBack = true;
       } catch (e2) {
         error = '$e2';
         return false;
       }
     }
-    final w = _asr!;
-    _heardSub = w.heard.listen(_onHeard);
-    _phaseSub = w.phases.listen(_onPhase);
-    _errSub = w.errors.listen((e) {
-      error = e;
-      notifyListeners();
-    });
+    w.setPartials(_partials);
+    _workers[key] = w;
+    _subs[key] = [
+      w.heard.listen(_onHeard),
+      w.phases.listen((p) => _onPhase(key, p)),
+      w.partialText.listen((t) {
+        if (key != activeKey || t == partial) return;
+        partial = t;
+        notifyListeners();
+      }),
+      w.errors.listen((e) {
+        error = e;
+        notifyListeners();
+      }),
+    ];
     return true;
   }
 
@@ -209,15 +256,34 @@ class LiveTranslator extends ChangeNotifier {
   /// The speech model: 'none', 'loading', 'ready' or 'failed'.
   String modelState = 'none';
 
-  /// Loads the speech model now, before anyone taps, so the first tap is
+  /// The recognisers this setup needs: the main one always, the Hebrew pack
+  /// too when Hebrew is one of the languages spoken and the pack is installed.
+  Set<String> get neededKeys => {
+        'main',
+        if (hasHebrewPack &&
+            ((mode == Mode.conversation && (mine == 'he' || theirs == 'he')) || (mode == Mode.listen && listenFrom == 'he')))
+          'he',
+      };
+
+  /// Loads the speech models now, before anyone taps, so the first tap is
   /// instant. Safe to call again: a load in progress is shared.
-  Future<bool> preload(AsrConfig config) {
-    final have = _asr;
-    if (have != null && have.config.sameModel(config)) return Future.value(true);
+  Future<bool> preload() {
+    final needed = neededKeys;
+    if (needed.every((k) => _workers[k]?.config.sameModel(configs[k]!) ?? false)) return Future.value(true);
     return _loading ??= () async {
       modelState = 'loading';
       notifyListeners();
-      final ok = await _ensureWorker(config);
+      var ok = true;
+      for (final k in needed) {
+        if (!await _ensureWorker(k, configs[k]!)) {
+          ok = false;
+          break;
+        }
+      }
+      // a model nobody needs any more leaves memory
+      for (final k in _workers.keys.where((k) => !needed.contains(k)).toList()) {
+        await _dropWorker(k);
+      }
       modelState = ok ? 'ready' : 'failed';
       _loading = null;
       notifyListeners();
@@ -234,7 +300,8 @@ class LiveTranslator extends ChangeNotifier {
   /// Sentences written down so far (any outcome): the GPU crash guard reads it.
   int decodes = 0;
 
-  void _onPhase(String p) {
+  void _onPhase(String key, String p) {
+    if (key != activeKey && p != 'decoding' && p != 'missed') return; // a worker that is not listening
     if (phase == 'decoding' && p != 'decoding') decodes++;
     _missedTimer?.cancel();
     if (p == 'missed') {
@@ -251,16 +318,14 @@ class LiveTranslator extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _dropWorker() async {
-    await _heardSub?.cancel();
-    await _errSub?.cancel();
-    await _phaseSub?.cancel();
-    _heardSub = _errSub = _phaseSub = null;
-    _asr?.stop();
-    _asr = null;
+  Future<void> _dropWorker(String key) async {
+    for (final sub in _subs.remove(key) ?? const <StreamSubscription>[]) {
+      await sub.cancel();
+    }
+    _workers.remove(key)?.stop();
   }
 
-  Future<void> start(AsrConfig config) async {
+  Future<void> start() async {
     if (running) return;
     error = null;
     _mic = AudioRecorder();
@@ -269,12 +334,12 @@ class LiveTranslator extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (!await preload(config)) {
+    if (!await preload()) {
       notifyListeners();
       return;
     }
     _applyPolicy();
-    _asr!.reset();
+    _asr?.reset();
     _decoder.reset();
     _warmUp();
     final stream = await _mic!.startStream(const RecordConfig(
@@ -335,32 +400,46 @@ class LiveTranslator extends ChangeNotifier {
 
   void _applyPolicy() => _asr?.setPolicy(policy);
 
+  /// Switches the microphone to the recogniser for [newSide]'s language: the
+  /// one that was listening finishes its sentence first.
+  void _switchTo(String newSide) {
+    final before = _asr;
+    final hadSide = side != null;
+    if (hadSide) {
+      before?.flush();
+      Timer(const Duration(milliseconds: 400), _releaseHeld); // let the finished sentence arrive, then do not hold it
+    }
+    side = newSide;
+    final after = _asr;
+    if (!hadSide || !identical(before, after)) {
+      after?.reset(); // start clean
+      _decoder.reset();
+    }
+    _applyPolicy();
+  }
+
   /// Tap conversation: listen for [which] ('mine' or 'theirs'). Starts the
   /// microphone if needed; tapping the active side again stops it.
-  Future<void> tapSide(String which, AsrConfig config) async {
+  Future<void> tapSide(String which) async {
     _idleTimer?.cancel();
     if (running && side == which) {
       // done speaking: write it down, keep the microphone warm for the next turn
+      final w = _asr;
       side = null;
       notifyListeners();
       _idleTimer = Timer(idleClose, stop);
-      await _asr?.flushAndWait();
+      await w?.flushAndWait();
+      await _ids; // the last sentence has been given its direction
+      _releaseHeld();
       return;
     }
     if (running) {
-      if (side != null) {
-        _asr?.flush(); // finish what the other side was saying under the old language
-      } else {
-        _asr?.reset(); // the microphone was idle: start clean
-        _decoder.reset();
-      }
-      side = which;
-      _applyPolicy();
+      _switchTo(which);
       notifyListeners();
       return;
     }
     side = which;
-    await start(config);
+    await start();
     if (!running) side = null;
   }
 
@@ -379,7 +458,9 @@ class LiveTranslator extends ChangeNotifier {
     await _mic?.stop();
     await _mic?.dispose();
     _mic = null;
-    await _asr?.flushAndWait();
+    await Future.wait([for (final w in _workers.values) w.flushAndWait()]);
+    await _ids;
+    _releaseHeld();
     notifyListeners();
   }
 
@@ -414,15 +495,48 @@ class LiveTranslator extends ChangeNotifier {
       final d = await direct(mode, h, guesser,
           mine: mine, theirs: theirs, listenFrom: listenFrom, lastFrom: _lastFrom);
       if (!d.guessed && d.from.isNotEmpty) _lastFrom = d.from;
+      _release(_joiner.offer(h, d, DateTime.now()));
+      _joinTimer?.cancel();
+      if (_joiner.holding) {
+        _joinTimer = Timer(_joiner.window, () {
+          _release(_joiner.due(DateTime.now()));
+          _showHeld();
+        });
+      }
+      _showHeld(); // a piece waiting for the rest of its sentence stays on screen as words so far
+    }).catchError((Object e) {
+      error = '$e';
+      notifyListeners();
+    });
+  }
+
+  final _joiner = SentenceJoiner();
+  Timer? _joinTimer;
+
+  void _showHeld() {
+    final t = _joiner.heldText;
+    if (t == partial) return;
+    partial = t;
+    notifyListeners();
+  }
+
+  /// Pieces that are ready: shown, translated and spoken, in order.
+  void _release(List<(Heard, Direction)> ready) {
+    for (final (h, d) in ready) {
       final line = Line(h, d);
       lines.add(line);
       notifyListeners();
       _waiting++;
       _queue = _queue.then((_) => _process(line)).whenComplete(() => _waiting--);
-    }).catchError((Object e) {
-      error = '$e';
-      notifyListeners();
-    });
+    }
+  }
+
+  /// Lets go of a piece still waiting for the rest of its sentence (the person
+  /// stopped or changed side: no more is coming).
+  void _releaseHeld() {
+    _joinTimer?.cancel();
+    _release(_joiner.flush());
+    _showHeld();
   }
 
   Future<void> _process(Line line) async {
@@ -477,7 +591,12 @@ class LiveTranslator extends ChangeNotifier {
     _disposed = true;
     _missedTimer?.cancel();
     _idleTimer?.cancel();
-    stop().whenComplete(_dropWorker); // the speech model leaves memory with the screen
+    _joinTimer?.cancel();
+    stop().whenComplete(() async {
+      for (final k in _workers.keys.toList()) {
+        await _dropWorker(k);
+      }
+    }); // the speech models leave memory with the screen
     engine.close();
     guesser.close();
     super.dispose();

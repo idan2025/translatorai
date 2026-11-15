@@ -75,9 +75,43 @@ const speechModels = <SpeechModel>[
   ),
 ];
 
+/// A speech model for one language, used only when that language is spoken
+/// (next to the main model, which handles every other language). ivrit.ai's
+/// Hebrew Whisper (Apache-2.0, a fine-tune of large-v3-turbo) cuts Hebrew word
+/// errors from 38% to 28% on FLEURS, but it is Hebrew-only: English comes out 49%
+/// wrong and Russian unreadable, so it cannot be the one model of a conversation.
+class LanguagePack {
+  const LanguagePack(this.id, this.label, this.note, this.language, this.encoder, this.decoder, this.tokens);
+  final String id, label, note;
+  final String language;
+  final ModelFile encoder, decoder, tokens;
+  List<ModelFile> get files => [encoder, decoder, tokens];
+  int get bytes => files.fold(0, (a, f) => a + f.bytes);
+}
+
+const _hePack = 'https://huggingface.co/pantinor/whisper-large-v3-turbo-hebrew-sherpa/resolve/9dffea5951395ea70c3ced62cce35a94d9769338';
+
+const hebrewPack = LanguagePack(
+  'hebrew-turbo',
+  'Hebrew speech pack',
+  'ivrit.ai Hebrew Whisper (large-v3-turbo) · 1 GB · much better Hebrew; used only when Hebrew is spoken',
+  'he',
+  ModelFile('whisper-he-encoder.int8.onnx', '$_hePack/encoder.int8.onnx',
+      '3e34e95500e7ea8479eda8b675ba920669c969a5ccc5531760d2d660fb332b17', 674622353),
+  ModelFile('whisper-he-decoder.int8.onnx', '$_hePack/decoder.int8.onnx',
+      '224878f5a3336970c01d272e1a8be6cb7bd4138421bcb5118d11bbdb17d84e2c', 361352573),
+  _tokens,
+);
+
+const languagePacks = <LanguagePack>[hebrewPack];
+
 /// The model used when nothing is chosen yet (or the chosen id is gone): Standard.
 SpeechModel speechModelById(String id) =>
     speechModels.firstWhere((m) => m.id == id, orElse: () => speechModels.firstWhere((m) => m.id == 'whisper-small'));
 
 /// Every file any speech model needs, plus the voice detector.
-final List<ModelFile> allModelFiles = [vadModel, for (final m in speechModels) ...m.files];
+final List<ModelFile> allModelFiles = [
+  vadModel,
+  for (final m in speechModels) ...m.files,
+  for (final k in languagePacks) ...k.files,
+];

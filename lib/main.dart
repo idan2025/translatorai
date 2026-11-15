@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'bench_screen.dart';
 import 'src/asr.dart';
 import 'src/languages.dart';
 import 'src/model_store.dart';
@@ -20,6 +22,22 @@ import 'src/lid.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // models and engines that are not Dart packages, listed beside the packages' own licences
+  LicenseRegistry.addLicense(() async* {
+    yield const LicenseEntryWithLineBreaks(['OpenAI Whisper'],
+        'Speech recognition models: Whisper (base, small, large-v3-turbo), MIT License, Copyright (c) 2022 OpenAI.');
+    yield const LicenseEntryWithLineBreaks(['ivrit.ai Hebrew Whisper'],
+        'Hebrew speech pack: ivrit-ai/whisper-large-v3-turbo, a Hebrew fine-tune of OpenAI Whisper large-v3-turbo, '
+        'licensed under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Converted for sherpa-onnx '
+        'by pantinor/whisper-large-v3-turbo-hebrew-sherpa (Apache-2.0).');
+    yield const LicenseEntryWithLineBreaks(['Silero VAD'],
+        'Voice activity detection: Silero VAD, MIT License, Copyright (c) 2020-present Silero Team.');
+    yield const LicenseEntryWithLineBreaks(['sherpa-onnx'],
+        'Speech runtime: sherpa-onnx and ONNX Runtime, Apache License 2.0 and MIT License respectively.');
+    yield const LicenseEntryWithLineBreaks(['Google ML Kit'],
+        'On-device translation and language identification: Google ML Kit, used under the ML Kit Terms of Service '
+        '(https://developers.google.com/ml-kit/terms).');
+  });
   final settings = await Settings.load();
   // The GPU crash guard runs once per app start: if the last run died while the
   // GPU route was being tried, switch it off so it cannot crash again.
@@ -236,6 +254,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final scroll = ScrollController();
   String? preparing;
   bool _screenOn = false;
+
+  /// The phone's memory in GB (0 = not known). The Hebrew pack needs about 2 GB free beside the main model.
+  double ramGb = 0;
   int _lineCount = 0;
 
   @override
@@ -248,6 +269,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ..theirs = s.theirs
       ..listenFrom = s.listenFrom
       ..autoSpeaker = s.autoSpeaker
+      ..showPartials = s.partials
       ..speak = s.speak;
     if (widget.gpuReset && !_gpuToldOnce) {
       _gpuToldOnce = true;
@@ -280,9 +302,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         });
       }
     });
+    _system.invokeMethod<int>('totalMemory').then((b) {
+      if (mounted && b != null) setState(() => ramGb = b / 1073741824);
+    }).catchError((_) {});
     // load the speech model now, so the first tap does not wait for it
+    refreshConfigs();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) live.preload(asrConfig);
+      if (mounted) live.preload();
     });
     _prepare([live.mine, if (live.mode == Mode.conversation) live.theirs, if (live.listenFrom.isNotEmpty) live.listenFrom]);
   }
@@ -315,16 +341,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied'), duration: Duration(seconds: 1)));
   }
 
-  AsrConfig get asrConfig => AsrConfig(
+  AsrConfig _config(ModelFile encoder, ModelFile decoder, ModelFile tokens) => AsrConfig(
         vad: widget.store.pathOf(vadModel.name),
-        encoder: widget.store.pathOf(widget.model.encoder.name),
-        decoder: widget.store.pathOf(widget.model.decoder.name),
-        tokens: widget.store.pathOf(widget.model.tokens.name),
+        encoder: widget.store.pathOf(encoder.name),
+        decoder: widget.store.pathOf(decoder.name),
+        tokens: widget.store.pathOf(tokens.name),
         threads: math.min(4, math.max(1, Platform.numberOfProcessors ~/ 2)),
         provider: widget.settings.accel ? 'nnapi' : 'cpu',
         // you tap your side, so you are expected to finish: close a sentence sooner
         endSilence: live.mode == Mode.conversation && !live.autoSpeaker ? 0.4 : 0.5,
       );
+
+  bool get hebrewPackInstalled => widget.store.hasAll(hebrewPack.files);
+
+  /// What the translator may load: the chosen model, and the Hebrew pack when it is
+  /// installed and switched on. Refreshed whenever any of that changes.
+  void refreshConfigs() {
+    final m = widget.model;
+    live.configs = {
+      'main': _config(m.encoder, m.decoder, m.tokens),
+      if (hebrewPackInstalled && widget.settings.hebrewPack)
+        'he': _config(hebrewPack.encoder, hebrewPack.decoder, hebrewPack.tokens),
+    };
+  }
 
   /// Fetches translation models ahead of time, so the first sentence is not
   /// the one that waits for a download.
@@ -369,6 +408,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
     if (choice.code.isNotEmpty) _prepare([choice.code]);
+    if (choice.code == 'he' && !hebrewPackInstalled && widget.settings.hebrewPack) await offerHebrewPack();
+    refreshConfigs();
+    live.preload(); // the Hebrew pack loads as soon as Hebrew is chosen
+  }
+
+  /// Hebrew is far better with its own speech pack (28% of words wrong instead of 38%):
+  /// offer it when Hebrew is chosen and it is not on the phone.
+  Future<void> offerHebrewPack() async {
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Better Hebrew?'),
+        content: Text('The Hebrew speech pack understands Hebrew much better than the standard model '
+            '(about a quarter fewer wrong words). It is ${(hebrewPack.bytes / 1e6).round()} MB and is used only when Hebrew '
+            'is spoken. ${ramGb > 0 && ramGb < 5 ? 'This phone has ${ramGb.toStringAsFixed(1)} GB of memory, so it may run out of memory with it. ' : ''}'
+            'Download it now, on Wi-Fi?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Download')),
+        ],
+      ),
+    );
+    if (go == true && mounted) await downloadHebrewPack();
+  }
+
+  Future<void> downloadHebrewPack() async {
+    final progress = ValueNotifier<double>(0);
+    final messenger = ScaffoldMessenger.of(context);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Downloading the Hebrew speech pack'),
+        content: ValueListenableBuilder<double>(
+          valueListenable: progress,
+          builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+            LinearProgressIndicator(value: v),
+            const SizedBox(height: 8),
+            Text('${(v * 100).toStringAsFixed(0)}% of ${(hebrewPack.bytes / 1e6).round()} MB'),
+          ]),
+        ),
+      ),
+    );
+    try {
+      await widget.store.ensure(hebrewPack.files, onProgress: (d, t) => progress.value = d / t);
+      widget.settings.hebrewPack = true;
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      progress.dispose();
+    }
+    if (!mounted) return;
+    refreshConfigs();
+    setState(() {});
+    live.preload();
   }
 
   // ------------------------------------------------------------ settings
@@ -474,18 +569,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  /// Marks the hardware route as "being tried" for the crash guard, then starts.
-  AsrConfig startConfig() {
-    final c = asrConfig;
-    if (c.provider != 'cpu') widget.settings.accelTrying = true;
-    return c;
+  /// Marks the hardware route as "being tried" for the crash guard.
+  void markGpuTry() {
+    if (widget.settings.accel) widget.settings.accelTrying = true;
   }
 
   Future<void> toggle() async {
     if (live.running) {
       await live.stop();
     } else {
-      await live.start(startConfig());
+      refreshConfigs();
+      markGpuTry();
+      await live.start();
     }
   }
 
@@ -497,7 +592,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: FilledButton.tonal(
-          onPressed: () => live.tapSide(which, startConfig()),
+          onPressed: () {
+            if (!live.running) {
+              refreshConfigs();
+              markGpuTry();
+            }
+            live.tapSide(which);
+          },
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(88),
             backgroundColor: active ? cs.error : null,
@@ -558,6 +659,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         child: Text('Delete the ${m.label} model (${(m.bytes / 1e6).round()} MB)'),
                       ),
                   MenuItemButton(
+                    leadingIcon: Icon(hebrewPackInstalled ? Icons.delete_outline : Icons.download),
+                    onPressed: locked
+                        ? null
+                        : () async {
+                            await settle();
+                            if (hebrewPackInstalled) {
+                              await widget.store.deleteModel(hebrewPack.files, except: widget.model.files);
+                              refreshConfigs();
+                              live.preload(); // frees its memory
+                              if (mounted) setState(() {});
+                            } else {
+                              await downloadHebrewPack();
+                            }
+                          },
+                    child: Text(hebrewPackInstalled
+                        ? 'Delete the Hebrew speech pack (${(hebrewPack.bytes / 1e6).round()} MB)'
+                        : 'Download the Hebrew speech pack (${(hebrewPack.bytes / 1e6).round()} MB)'),
+                  ),
+                  MenuItemButton(
+                    leadingIcon: Icon(live.showPartials ? Icons.check_box : Icons.check_box_outline_blank),
+                    onPressed: () => setState(() => live.showPartials = widget.settings.partials = !live.showPartials),
+                    child: const Text('Show words while I speak'),
+                  ),
+                  MenuItemButton(
                     leadingIcon: Icon(live.autoSpeaker ? Icons.check_box : Icons.check_box_outline_blank),
                     onPressed: locked
                         ? null
@@ -581,6 +706,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => OfflineLanguages(engine: live.engine, inUse: {live.mine, live.theirs, live.listenFrom}))),
                     child: const Text('Offline languages…'),
+                  ),
+                  MenuItemButton(
+                    leadingIcon: const Icon(Icons.science_outlined),
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TranslationBenchmark(engine: live.engine))),
+                    child: const Text('Translation quality test…'),
                   ),
                   MenuItemButton(leadingIcon: const Icon(Icons.info_outline), onPressed: about, child: const Text('About')),
                   MenuItemButton(leadingIcon: const Icon(Icons.exit_to_app), onPressed: exitApp, child: const Text('Exit')),
@@ -666,8 +796,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               : ListView.builder(
                   controller: scroll,
                   padding: const EdgeInsets.all(16),
-                  itemCount: live.lines.length,
-                  itemBuilder: (_, i) => _LineView(
+                  itemCount: live.lines.length + (live.partial.isNotEmpty ? 1 : 0),
+                  itemBuilder: (_, i) => i == live.lines.length
+                      ? _PartialView(text: live.partial, left: live.mode == Mode.listen || live.side != 'mine')
+                      : _LineView(
                     line: live.lines[i],
                     mine: live.mine,
                     mode: live.mode,
@@ -892,6 +1024,31 @@ class _BigTextState extends State<BigText> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The words so far of a sentence still being spoken: faded, until it is final.
+class _PartialView extends StatelessWidget {
+  const _PartialView({required this.text, required this.left});
+  final String text;
+  final bool left;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Align(
+      alignment: left ? Alignment.centerLeft : Alignment.centerRight,
+      child: Container(
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.85),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          border: Border.all(color: cs.outlineVariant),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text('${sentenceCase(text)} …',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant, fontStyle: FontStyle.italic)),
       ),
     );
   }

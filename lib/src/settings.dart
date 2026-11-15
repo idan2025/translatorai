@@ -39,6 +39,14 @@ class Settings {
   bool get accelTrying => _p.getBool('accelTrying') ?? false;
   set accelTrying(bool v) => _p.setBool('accelTrying', v);
 
+  /// Use the Hebrew speech pack for Hebrew when it is installed.
+  bool get hebrewPack => _p.getBool('hebrewPack') ?? true;
+  set hebrewPack(bool v) => _p.setBool('hebrewPack', v);
+
+  /// Show the words of a sentence while it is still being spoken.
+  bool get partials => _p.getBool('partials') ?? true;
+  set partials(bool v) => _p.setBool('partials', v);
+
   bool get speak => _p.getBool('speak') ?? true;
   set speak(bool v) => _p.setBool('speak', v);
 }

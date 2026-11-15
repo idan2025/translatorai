@@ -7,6 +7,7 @@
 //
 // trans.tsv: "<file.wav>\t<reference text>" per line, audio 16 kHz mono PCM16.
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -46,6 +47,8 @@ void main() {
   final lang = Platform.environment['BENCH_LANG'] ?? 'he';
   final only = Platform.environment['BENCH_ONLY'];
   final threads = int.parse(Platform.environment['BENCH_THREADS'] ?? '4');
+  // seconds of silence appended to every clip (the engine drops the last words of a clip that ends abruptly)
+  final padSec = double.parse(Platform.environment['BENCH_PAD'] ?? '0');
 
   test('speech models on real $lang recordings', () {
     so.initBindings();
@@ -107,7 +110,8 @@ void main() {
         audioSec += wave.samples.length / wave.sampleRate;
         final s = rec.createStream();
         sw.start();
-        s.acceptWaveform(samples: wave.samples, sampleRate: wave.sampleRate);
+        final padded = Float32List(wave.samples.length + (padSec * wave.sampleRate).round())..setRange(0, wave.samples.length, wave.samples);
+        s.acceptWaveform(samples: padded, sampleRate: wave.sampleRate);
         rec.decode(s);
         final r = rec.getResult(s);
         sw.stop();

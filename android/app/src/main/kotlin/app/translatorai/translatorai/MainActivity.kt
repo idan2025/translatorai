@@ -1,5 +1,7 @@
 package app.translatorai.translatorai
 
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -27,6 +29,11 @@ class MainActivity : FlutterActivity() {
                         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                     }
                     result.success(null)
+                }
+                "totalMemory" -> {
+                    val info = ActivityManager.MemoryInfo()
+                    (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(info)
+                    result.success(info.totalMem)
                 }
                 "openAppSettings" -> {
                     startActivity(

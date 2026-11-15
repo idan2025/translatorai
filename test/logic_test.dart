@@ -8,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:translatorai/src/asr.dart';
 import 'package:translatorai/src/languages.dart';
+import 'package:translatorai/src/chrf.dart';
+import 'package:translatorai/src/joiner.dart';
 import 'package:translatorai/src/lid.dart';
 import 'package:translatorai/src/updater.dart';
 import 'package:translatorai/src/model_store.dart';
@@ -69,6 +71,97 @@ void main() {
       expect(normaliseTag('iw'), 'he');
       expect(normaliseTag('ru-Latn'), 'ru');
       expect(normaliseTag('fil'), 'tl');
+    });
+  });
+
+  group('chrF', () {
+    test('matches sacreBLEU on the same sentences, across alphabets', () {
+      expect(chrF(["The cat sat on the mat.", "He is going to the store now"], ["The cat is on the mat.", "He is going to the store."]), closeTo(80.9638, 0.01));
+      expect(chrF(["בוקר טוב לכולם", "אני רוצה כוס קפה"], ["בוקר טוב לכולם!", "אני רוצה כוס קפה בבקשה"]), closeTo(80.2838, 0.01));
+      expect(chrF(["Доброе утро, как дела?", "Я ничего не сказал"], ["Доброе утро! Как дела?", "Я ничего не сказал, чтобы ты хотел"]), closeTo(61.5243, 0.01));
+      expect(chrF(["identical text here"], ["identical text here"]), closeTo(100.0, 0.01));
+      expect(chrF(["abc"], ["xyz"]), closeTo(0.0, 0.01));
+    });
+  });
+
+  group('sentence joiner', () {
+    final t0 = DateTime(2026, 11, 16, 12);
+    const d = Direction('en', 'ru');
+    Heard h(String t) => Heard(t, 1, 100, language: 'en');
+
+    test('where a sentence ends', () {
+      for (final t in ['It is late.', 'Is it late?', 'Stop!', 'Well…', '"Go home."', '你好。', 'Это так.']) {
+        expect(endsSentence(t), isTrue, reason: t);
+      }
+      for (final t in ['Where is the', 'and then,', 'I want a', 'Hello there']) {
+        expect(endsSentence(t), isFalse, reason: t);
+      }
+    });
+
+    test('two halves of one sentence become one, in order', () {
+      final j = SentenceJoiner();
+      expect(j.offer(h('Where is the'), d, t0), isEmpty);
+      final out = j.offer(h('new store till?'), d, t0.add(const Duration(milliseconds: 600)));
+      expect(out.length, 1);
+      expect(out.single.$1.text, 'Where is the new store till?');
+      expect(out.single.$1.seconds, 2);
+      expect(j.holding, isFalse);
+    });
+
+    test('a finished sentence goes at once, an unfinished one waits for the window then goes alone', () {
+      final j = SentenceJoiner();
+      expect(j.offer(h('Good morning.'), d, t0).single.$1.text, 'Good morning.');
+      expect(j.offer(h('and then'), d, t0), isEmpty);
+      expect(j.due(t0.add(const Duration(milliseconds: 1000))), isEmpty);
+      expect(j.due(t0.add(const Duration(milliseconds: 1300))).single.$1.text, 'and then');
+    });
+
+    test('a piece in the other direction never joins: the old one goes first', () {
+      final j = SentenceJoiner();
+      expect(j.offer(h('How are'), d, t0), isEmpty);
+      final out = j.offer(Heard('Хорошо', 1, 1, language: 'ru'), const Direction('ru', 'en'), t0.add(const Duration(milliseconds: 300)));
+      expect(out.map((e) => e.$1.text), ['How are']);
+      expect(j.holding, isTrue, reason: 'the new piece now waits for its own sentence');
+    });
+
+    test('nothing is held for ever, and stopping lets go', () {
+      final j = SentenceJoiner();
+      var now = t0;
+      var released = <(Heard, Direction)>[];
+      for (var i = 0; i < 12 && released.isEmpty; i++) {
+        released = j.offer(h('and so on,'), d, now);
+        now = now.add(const Duration(milliseconds: 900));
+      }
+      expect(released.single.$1.text, startsWith('and so on, and so on,'), reason: 'after 8 s it goes whatever it ends with');
+      expect(j.flush().single.$1.text, 'and so on,', reason: 'the piece after it starts a new hold');
+      expect(j.offer(h('wait'), d, now), isEmpty);
+      expect(j.flush().single.$1.text, 'wait');
+      expect(j.flush(), isEmpty);
+    });
+
+    test('Chinese and Japanese are joined without a space', () {
+      expect(joinText('你好', '世界', 'zh'), '你好世界');
+      expect(joinText('Hello', 'world', 'en'), 'Hello world');
+    });
+  });
+
+  group('which recogniser', () {
+    test('Hebrew goes to the Hebrew pack when it is installed, everything else to the main model', () {
+      expect(modelKeyFor('he', hasHebrewPack: true), 'he');
+      expect(modelKeyFor('he', hasHebrewPack: false), 'main');
+      expect(modelKeyFor('en', hasHebrewPack: true), 'main');
+      expect(modelKeyFor(null, hasHebrewPack: true), 'main', reason: 'language not known in advance');
+    });
+    test('the Hebrew pack is a pinned download that shares the main vocabulary file', () {
+      expect(hebrewPack.language, 'he');
+      expect(hebrewPack.tokens.name, speechModels.first.tokens.name);
+      expect(allModelFiles.map((f) => f.name), containsAll(hebrewPack.files.map((f) => f.name)));
+      for (final f in hebrewPack.files) {
+        expect(f.sha256, matches(RegExp(r'^[0-9a-f]{64}$')));
+        expect(f.url, startsWith('https://huggingface.co/'));
+        expect(f.url, contains('/resolve/'), reason: 'pinned to a revision, never a branch');
+        expect(f.url, isNot(contains('/resolve/main/')));
+      }
     });
   });
 
