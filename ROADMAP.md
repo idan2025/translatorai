@@ -21,6 +21,9 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.3.4: experimental "Use the GPU" switch (Settings): runs the speech model through Android's
+  NNAPI. Off by default; it falls back to the CPU if the model will not load, and turns itself
+  off if the app dies trying. Not measured: needs a phone.
 - 0.3.3: Conversation has two tap-to-speak buttons (language known, one decode instead of up to
   three; fixes Hebrew heard as English); a Fast model (Whisper base); auto-detect kept as an option.
 - 0.3.2: the phone no longer hears its own translation (microphone closed until the voice
@@ -37,6 +40,12 @@
 - v0.1 was tried on a phone by the user: it ran; Whisper misheard languages (fixed in 0.2).
 
 ## Next
+
+0. **Speed of the 1 GB model.** Measured on a desktop CPU (4 threads) the time to write a
+   sentence is about 0.55x its length for turbo, 0.2x for small; a phone is ~3x slower. What
+   would help: a Hebrew fine-tune of *small* instead of turbo, a native whisper.cpp engine
+   (GPU via Vulkan, shorter audio context), or streaming recognition. ONNX Runtime on Android
+   has no GPU backend besides NNAPI, which handles quantised Whisper poorly.
 
 1. **Every language to every language.** ML Kit covers 59 languages. To reach
    the full scale, add engines behind `TranslationEngine`:

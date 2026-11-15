@@ -135,6 +135,9 @@ class LiveTranslator extends ChangeNotifier {
   bool hearing = false;
   String? error;
 
+  /// A non-error message for the person (a fallback that happened).
+  String? notice;
+
   AsrWorker? _asr;
   AudioRecorder? _mic;
   StreamSubscription? _micSub, _heardSub, _errSub;
@@ -163,9 +166,21 @@ class LiveTranslator extends ChangeNotifier {
     try {
       _asr = await AsrWorker.start(config);
     } catch (e) {
-      error = '$e';
-      notifyListeners();
-      return;
+      if (config.provider != 'cpu') {
+        // the hardware route would not load this model: carry on with the CPU
+        notice = 'Hardware acceleration could not run this model; using the CPU.';
+        try {
+          _asr = await AsrWorker.start(config.onCpu());
+        } catch (e2) {
+          error = '$e2';
+          notifyListeners();
+          return;
+        }
+      } else {
+        error = '$e';
+        notifyListeners();
+        return;
+      }
     }
     _applyPolicy();
     _heardSub = _asr!.heard.listen(_onHeard);

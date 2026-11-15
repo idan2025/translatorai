@@ -17,10 +17,18 @@ class AsrConfig {
     required this.decoder,
     required this.tokens,
     this.threads = 2,
+    this.provider = 'cpu',
   });
 
   final String vad, encoder, decoder, tokens;
   final int threads;
+
+  /// Where the speech model runs: 'cpu', or 'nnapi' (Android's route to a
+  /// phone's GPU or NPU; experimental).
+  final String provider;
+
+  AsrConfig onCpu() =>
+      AsrConfig(vad: vad, encoder: encoder, decoder: decoder, tokens: tokens, threads: threads);
 }
 
 /// Which languages the recogniser may write.
@@ -85,6 +93,7 @@ class Asr {
               encoder: config.encoder, decoder: config.decoder, language: language, task: 'transcribe', tailPaddings: -1),
           tokens: config.tokens,
           numThreads: config.threads,
+          provider: config.provider,
           debug: false,
         ),
       );

@@ -29,6 +29,16 @@ class Settings {
   bool get autoSpeaker => _p.getBool('autoSpeaker') ?? false;
   set autoSpeaker(bool v) => _p.setBool('autoSpeaker', v);
 
+  /// Run the speech model through Android's NNAPI (GPU/NPU) instead of the CPU.
+  bool get accel => _p.getBool('accel') ?? false;
+  set accel(bool v) => _p.setBool('accel', v);
+
+  /// Set while NNAPI is being tried and cleared after the first successful
+  /// transcription. Still set at the next start means the app died trying: the
+  /// switch is turned off so it cannot crash-loop.
+  bool get accelTrying => _p.getBool('accelTrying') ?? false;
+  set accelTrying(bool v) => _p.setBool('accelTrying', v);
+
   bool get speak => _p.getBool('speak') ?? true;
   set speak(bool v) => _p.setBool('speak', v);
 }

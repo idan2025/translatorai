@@ -229,8 +229,20 @@ class _HomeScreenState extends State<HomeScreen> {
       ..listenFrom = s.listenFrom
       ..autoSpeaker = s.autoSpeaker
       ..speak = s.speak;
+    if (s.accelTrying) {
+      // the last run died while trying the hardware route: switch it off for good
+      s.accel = false;
+      s.accelTrying = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Hardware acceleration stopped the app last time, so it was turned off.')));
+        }
+      });
+    }
     live.addListener(() {
       if (!mounted) return;
+      if (widget.settings.accelTrying && live.lines.isNotEmpty) widget.settings.accelTrying = false; // it worked
       setState(() {});
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
@@ -252,6 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
         decoder: widget.store.pathOf(widget.model.decoder.name),
         tokens: widget.store.pathOf(widget.model.tokens.name),
         threads: math.min(4, math.max(1, Platform.numberOfProcessors ~/ 2)),
+        provider: widget.settings.accel ? 'nnapi' : 'cpu',
       );
 
   /// Fetches translation models ahead of time, so the first sentence is not
@@ -388,11 +401,18 @@ class _HomeScreenState extends State<HomeScreen> {
         live.theirs = widget.settings.theirs = m;
       });
 
+  /// Marks the hardware route as "being tried" for the crash guard, then starts.
+  AsrConfig startConfig() {
+    final c = asrConfig;
+    if (c.provider != 'cpu') widget.settings.accelTrying = true;
+    return c;
+  }
+
   Future<void> toggle() async {
     if (live.running) {
       await live.stop();
     } else {
-      await live.start(asrConfig);
+      await live.start(startConfig());
     }
   }
 
@@ -404,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: FilledButton.tonal(
-          onPressed: () => live.tapSide(which, asrConfig),
+          onPressed: () => live.tapSide(which, startConfig()),
           style: FilledButton.styleFrom(
             minimumSize: const Size.fromHeight(88),
             backgroundColor: active ? cs.error : null,
@@ -472,6 +492,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const Text('Conversation: detect who speaks (slower)'),
                   ),
                   MenuItemButton(
+                    leadingIcon: Icon(widget.settings.accel ? Icons.check_box : Icons.check_box_outline_blank),
+                    onPressed: locked
+                        ? null
+                        : () => setState(() => widget.settings.accel = !widget.settings.accel),
+                    child: const Text('Use the GPU (experimental)'),
+                  ),
+                  MenuItemButton(
                       leadingIcon: const Icon(Icons.system_update), onPressed: checkForUpdates, child: const Text('Check for updates')),
                   MenuItemButton(leadingIcon: const Icon(Icons.info_outline), onPressed: about, child: const Text('About')),
                   MenuItemButton(leadingIcon: const Icon(Icons.exit_to_app), onPressed: exitApp, child: const Text('Exit')),
@@ -534,6 +561,11 @@ class _HomeScreenState extends State<HomeScreen> {
               'or speak in shorter sentences.',
               style: TextStyle(color: cs.tertiary),
             ),
+          ),
+        if (live.notice != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Text(live.notice!, style: TextStyle(color: cs.tertiary)),
           ),
         if (live.error != null)
           Padding(
