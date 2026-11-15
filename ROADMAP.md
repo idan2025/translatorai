@@ -21,6 +21,11 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.3.5: fluency: a tap conversation closes a sentence after 0.4 s of quiet (was 0.5); a
+  "Hearing you…" / "Writing it down…" indicator; translation and voices are warmed up in the
+  background. User test of 0.3.4 with the GPU switch ON: correct text, and the CPU was a little
+  faster, so it stays off by default. (Warming the speech model itself made no measurable
+  difference, so it is not done.)
 - 0.3.4: experimental "Use the GPU" switch (Settings): runs the speech model through Android's
   NNAPI. Off by default; it falls back to the CPU if the model will not load, and turns itself
   off if the app dies trying. Not measured: needs a phone.

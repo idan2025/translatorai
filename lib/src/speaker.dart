@@ -25,6 +25,17 @@ class Speaker {
     if (d != null && !d.isCompleted) d.complete();
   }
 
+  /// Gets the voice for [code] ready before it is needed: the first word
+  /// otherwise waits for the engine to start.
+  Future<void> warm(String code) async {
+    try {
+      if (_lang != code && await _tts.isLanguageAvailable(code) == true) {
+        await _tts.setLanguage(code);
+        _lang = code;
+      }
+    } catch (_) {}
+  }
+
   /// Speaks [text] in [code] and completes when the voice has stopped.
   /// Returns false when the phone has no voice for that language.
   Future<bool> say(String text, String code) async {

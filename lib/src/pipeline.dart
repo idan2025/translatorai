@@ -138,9 +138,12 @@ class LiveTranslator extends ChangeNotifier {
   /// A non-error message for the person (a fallback that happened).
   String? notice;
 
+  /// What the recogniser is doing: 'hearing', 'decoding' or 'idle'.
+  String phase = 'idle';
+
   AsrWorker? _asr;
   AudioRecorder? _mic;
-  StreamSubscription? _micSub, _heardSub, _errSub;
+  StreamSubscription? _micSub, _heardSub, _errSub, _phaseSub;
   final _decoder = Pcm16Decoder();
   Future<void> _queue = Future.value();
   Future<void> _ids = Future.value();
@@ -184,6 +187,12 @@ class LiveTranslator extends ChangeNotifier {
     }
     _applyPolicy();
     _heardSub = _asr!.heard.listen(_onHeard);
+    _phaseSub = _asr!.phases.listen((p) {
+      if (p == phase) return;
+      phase = p;
+      notifyListeners();
+    });
+    _warmUp();
     _errSub = _asr!.errors.listen((e) {
       error = e;
       notifyListeners();
@@ -212,6 +221,26 @@ class LiveTranslator extends ChangeNotifier {
     running = true;
     hearing = true;
     notifyListeners();
+  }
+
+  /// Gets everything the first sentence will need ready while the person
+  /// starts talking: both translation directions and the voices.
+  Future<void> _warmUp() async {
+    try {
+      final pair = {mine, if (mode == Mode.conversation) theirs, if (listenFrom.isNotEmpty) listenFrom};
+      for (final c in pair) {
+        if (engine.supports(c) && !await engine.isReady(c)) return; // would download: not a warm-up
+      }
+      if (mode == Mode.conversation) {
+        await engine.translate('Hello', from: mine, to: theirs);
+        await engine.translate('Hello', from: theirs, to: mine);
+        await speaker.warm(theirs);
+        await speaker.warm(mine);
+      } else {
+        await speaker.warm(mine);
+        if (listenFrom.isNotEmpty) await engine.translate('Hello', from: listenFrom, to: mine);
+      }
+    } catch (_) {} // a warm-up must never become an error
   }
 
   /// What the recogniser may write now. Listen with a language picked: that
@@ -252,6 +281,8 @@ class LiveTranslator extends ChangeNotifier {
     await Future.delayed(const Duration(milliseconds: 300));
     await _heardSub?.cancel();
     await _errSub?.cancel();
+    await _phaseSub?.cancel();
+    phase = 'idle';
     _asr?.stop();
     _asr = null;
     running = false;

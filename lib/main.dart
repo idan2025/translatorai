@@ -265,6 +265,8 @@ class _HomeScreenState extends State<HomeScreen> {
         tokens: widget.store.pathOf(widget.model.tokens.name),
         threads: math.min(4, math.max(1, Platform.numberOfProcessors ~/ 2)),
         provider: widget.settings.accel ? 'nnapi' : 'cpu',
+        // you tap your side, so you are expected to finish: close a sentence sooner
+        endSilence: live.mode == Mode.conversation && !live.autoSpeaker ? 0.4 : 0.5,
       );
 
   /// Fetches translation models ahead of time, so the first sentence is not
@@ -582,6 +584,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   itemBuilder: (_, i) => _LineView(line: live.lines[i], mine: live.mine, mode: live.mode),
                 ),
         ),
+        if (live.running)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(children: [
+              if (live.phase == 'decoding')
+                const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+              else
+                Icon(Icons.graphic_eq, size: 16, color: live.phase == 'hearing' ? cs.primary : cs.outline),
+              const SizedBox(width: 8),
+              Text(
+                switch (live.phase) { 'hearing' => 'Hearing you…', 'decoding' => 'Writing it down…', _ => 'Listening' },
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+            ]),
+          ),
         SafeArea(
           top: false,
           child: Padding(

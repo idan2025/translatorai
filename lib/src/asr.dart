@@ -18,6 +18,7 @@ class AsrConfig {
     required this.tokens,
     this.threads = 2,
     this.provider = 'cpu',
+    this.endSilence = 0.5,
   });
 
   final String vad, encoder, decoder, tokens;
@@ -27,8 +28,12 @@ class AsrConfig {
   /// phone's GPU or NPU; experimental).
   final String provider;
 
-  AsrConfig onCpu() =>
-      AsrConfig(vad: vad, encoder: encoder, decoder: decoder, tokens: tokens, threads: threads);
+  /// Seconds of quiet that end a sentence. Shorter = quicker answers, but a
+  /// pause inside a sentence then splits it.
+  final double endSilence;
+
+  AsrConfig onCpu() => AsrConfig(
+      vad: vad, encoder: encoder, decoder: decoder, tokens: tokens, threads: threads, endSilence: endSilence);
 }
 
 /// Which languages the recogniser may write.
@@ -74,7 +79,7 @@ class Asr {
         sileroVad: so.SileroVadModelConfig(
           model: config.vad,
           threshold: 0.5,
-          minSilenceDuration: 0.5, // a pause this long ends a sentence
+          minSilenceDuration: config.endSilence, // a pause this long ends a sentence
           minSpeechDuration: 0.25,
           maxSpeechDuration: 10.0, // long monologues are cut so translation keeps up
         ),
@@ -107,6 +112,16 @@ class Asr {
 
   void setPolicy(LanguagePolicy p) => _policy = p;
 
+  /// Told what the recogniser is doing: 'hearing', 'decoding', 'idle'.
+  void Function(String phase)? onPhase;
+  var _phase = 'idle';
+  void _setPhase(String p) {
+    if (p == _phase) return;
+    _phase = p;
+    onPhase?.call(p);
+  }
+
+
   /// Forgets the audio in progress, unfinished speech included. Used when the
   /// microphone was closed for a moment (the phone was speaking), so the
   /// detector never joins what came before with what comes after.
@@ -119,7 +134,9 @@ class Asr {
   List<Heard> accept(Float32List samples) {
     _recent.add(samples);
     _vad.acceptWaveform(samples);
-    return _drain();
+    final out = _drain();
+    _setPhase(_vad.isDetected() ? 'hearing' : 'idle');
+    return out;
   }
 
   /// Ends the current utterance, if any (e.g. push-to-talk released).
@@ -147,8 +164,10 @@ class Asr {
       final padded = aligned
           ? _recent.slice(seg.start - padBefore, seg.start + seg.samples.length + padAfter) ?? seg.samples
           : seg.samples;
+      _setPhase('decoding');
       final h = transcribe(padded);
       if (h != null) out.add(h);
+      _setPhase('idle');
     }
     return out;
   }
@@ -308,6 +327,9 @@ class AsrWorker {
   Stream<Heard> get heard => _events.where((e) => e is Heard).cast<Heard>();
   Stream<String> get errors => _events.where((e) => e is String).cast<String>();
 
+  /// 'hearing' (speech detected), 'decoding' (writing it down), 'idle'.
+  Stream<String> get phases => _events.where((e) => e is List).map((e) => (e as List)[1] as String);
+
   static Future<AsrWorker> start(AsrConfig config) async {
     final fromWorker = ReceivePort();
     final iso = await Isolate.spawn(_main, [fromWorker.sendPort, config]);
@@ -341,6 +363,7 @@ class AsrWorker {
       out.send('could not load the speech model: $e');
       return;
     }
+    asr.onPhase = (p) => out.send(['phase', p]);
     final inbox = ReceivePort();
     out.send(inbox.sendPort);
     inbox.listen((msg) {
