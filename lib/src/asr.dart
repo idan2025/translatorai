@@ -34,6 +34,11 @@ class AsrConfig {
 
   AsrConfig onCpu() => AsrConfig(
       vad: vad, encoder: encoder, decoder: decoder, tokens: tokens, threads: threads, endSilence: endSilence);
+
+  /// Whether a worker loaded with [o] can serve this config without a reload
+  /// (the quiet length is changed on the fly).
+  bool sameModel(AsrConfig o) =>
+      o.encoder == encoder && o.decoder == decoder && o.tokens == tokens && o.provider == provider && o.threads == threads;
 }
 
 /// Which languages the recogniser may write.
@@ -74,12 +79,16 @@ class Heard {
 /// transcribes each one. Synchronous: run it off the UI thread ([AsrWorker]).
 class Asr {
   Asr(this.config) {
-    _vad = so.VoiceActivityDetector(
+    _vad = _makeVad(config.endSilence);
+    _rec = so.OfflineRecognizer(_cfg(''));
+  }
+
+  so.VoiceActivityDetector _makeVad(double endSilence) => so.VoiceActivityDetector(
       config: so.VadModelConfig(
         sileroVad: so.SileroVadModelConfig(
           model: config.vad,
           threshold: 0.5,
-          minSilenceDuration: config.endSilence, // a pause this long ends a sentence
+          minSilenceDuration: endSilence, // a pause this long ends a sentence
           minSpeechDuration: 0.25,
           maxSpeechDuration: 10.0, // long monologues are cut so translation keeps up
         ),
@@ -89,7 +98,15 @@ class Asr {
       ),
       bufferSizeInSeconds: 30,
     );
-    _rec = so.OfflineRecognizer(_cfg(''));
+
+  /// Changes how much quiet ends a sentence (the detector is small and rebuilt;
+  /// the speech model stays loaded).
+  void setEndSilence(double seconds) {
+    if (seconds == _endSilence) return;
+    _endSilence = seconds;
+    _vad.free();
+    _vad = _makeVad(seconds);
+    _recent.clear();
   }
 
   so.OfflineRecognizerConfig _cfg(String language) => so.OfflineRecognizerConfig(
@@ -104,7 +121,8 @@ class Asr {
       );
 
   final AsrConfig config;
-  late final so.VoiceActivityDetector _vad;
+  late so.VoiceActivityDetector _vad;
+  late double _endSilence = config.endSilence;
   late final so.OfflineRecognizer _rec;
   final _recent = AudioRing(sampleRate * 32);
   var _policy = const LanguagePolicy();
@@ -167,7 +185,9 @@ class Asr {
       _setPhase('decoding');
       final h = transcribe(padded);
       if (h != null) out.add(h);
-      _setPhase('idle');
+      // nothing came of it (silence, noise, or text that cannot have been said): say so
+      _setPhase(h == null ? 'missed' : 'idle');
+      _phase = 'idle';
     }
     return out;
   }
@@ -327,8 +347,12 @@ class AsrWorker {
   Stream<Heard> get heard => _events.where((e) => e is Heard).cast<Heard>();
   Stream<String> get errors => _events.where((e) => e is String).cast<String>();
 
-  /// 'hearing' (speech detected), 'decoding' (writing it down), 'idle'.
-  Stream<String> get phases => _events.where((e) => e is List).map((e) => (e as List)[1] as String);
+  /// 'hearing' (speech detected), 'decoding' (writing it down), 'missed'
+  /// (decoded to nothing), 'idle'.
+  Stream<String> get phases =>
+      _events.where((e) => e is List && e[0] == 'phase').map((e) => (e as List)[1] as String);
+
+  late final AsrConfig config;
 
   static Future<AsrWorker> start(AsrConfig config) async {
     final fromWorker = ReceivePort();
@@ -339,11 +363,22 @@ class AsrWorker {
       iso.kill();
       throw StateError(first);
     }
-    return AsrWorker._(iso, first as SendPort, events.cast<Object>());
+    return AsrWorker._(iso, first as SendPort, events.cast<Object>())..config = config;
   }
 
   void add(Float32List samples) => _toWorker.send(TransferableTypedData.fromList([samples]));
   void flush() => _toWorker.send('flush');
+
+  /// Finishes the sentence in progress and completes once it has been written
+  /// down and sent back (or after [timeout]): stopping must not throw away
+  /// the last thing said.
+  Future<void> flushAndWait({Duration timeout = const Duration(seconds: 60)}) async {
+    final done = _events.firstWhere((e) => e is List && e[0] == 'flushed').timeout(timeout, onTimeout: () => const []);
+    _toWorker.send('flush');
+    await done;
+  }
+
+  void setEndSilence(double seconds) => _toWorker.send(['silence', seconds]);
   void reset() => _toWorker.send('reset');
   void setPolicy(LanguagePolicy p) => _toWorker.send(p.toJson());
 
@@ -372,6 +407,8 @@ class AsrWorker {
           for (final h in asr.accept(msg.materialize().asFloat32List())) {
             out.send(h);
           }
+        } else if (msg is List && msg.isNotEmpty && msg[0] == 'silence') {
+          asr.setEndSilence((msg[1] as num).toDouble());
         } else if (msg is Map) {
           asr.setPolicy(LanguagePolicy.fromJson(msg));
         } else if (msg == 'reset') {
@@ -387,6 +424,8 @@ class AsrWorker {
       } catch (e) {
         out.send('speech error: $e');
       }
+      // always answer a flush, even after an error, so a stop never hangs on it
+      if (msg == 'flush') out.send(['flushed']);
     });
   }
 }

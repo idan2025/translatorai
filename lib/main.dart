@@ -21,22 +21,30 @@ import 'src/lid.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final settings = await Settings.load();
+  // The GPU crash guard runs once per app start: if the last run died while the
+  // GPU route was being tried, switch it off so it cannot crash again.
+  final gpuReset = settings.accelTrying;
+  if (gpuReset) {
+    settings.accel = false;
+    settings.accelTrying = false;
+  }
   final dir = Directory('${(await getApplicationSupportDirectory()).path}/models');
   // must match res/xml/update_paths.xml: the cache's "updates" folder
   final updater = Updater(dir: Directory('${(await getTemporaryDirectory()).path}/updates'));
   // an APK left from the update that started this version, or an abandoned download
   updater.cleanUp().ignore();
   final info = await PackageInfo.fromPlatform();
-  runApp(TranslatorApp(settings: settings, store: ModelStore(dir), updater: updater, version: info.version));
+  runApp(TranslatorApp(settings: settings, store: ModelStore(dir), updater: updater, version: info.version, gpuReset: gpuReset));
 }
 
 class TranslatorApp extends StatelessWidget {
   const TranslatorApp(
-      {super.key, required this.settings, required this.store, required this.updater, required this.version});
+      {super.key, required this.settings, required this.store, required this.updater, required this.version, this.gpuReset = false});
   final Settings settings;
   final ModelStore store;
   final Updater updater;
   final String version;
+  final bool gpuReset;
 
   @override
   Widget build(BuildContext context) {
@@ -46,18 +54,20 @@ class TranslatorApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: seed, useMaterial3: true),
       darkTheme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.dark, useMaterial3: true),
-      home: Gate(settings: settings, store: store, updater: updater, version: version),
+      home: Gate(settings: settings, store: store, updater: updater, version: version, gpuReset: gpuReset),
     );
   }
 }
 
 /// Shows setup until the speech model is on the phone, then the translator.
 class Gate extends StatefulWidget {
-  const Gate({super.key, required this.settings, required this.store, required this.updater, required this.version});
+  const Gate(
+      {super.key, required this.settings, required this.store, required this.updater, required this.version, this.gpuReset = false});
   final Settings settings;
   final ModelStore store;
   final Updater updater;
   final String version;
+  final bool gpuReset;
   @override
   State<Gate> createState() => _GateState();
 }
@@ -88,6 +98,7 @@ class _GateState extends State<Gate> {
       model: model,
       updater: widget.updater,
       version: widget.version,
+      gpuReset: widget.gpuReset,
       onChangeModel: () => setState(() => choosing = true),
     );
   }
@@ -202,16 +213,21 @@ class HomeScreen extends StatefulWidget {
       required this.model,
       required this.updater,
       required this.version,
+      this.gpuReset = false,
       required this.onChangeModel});
   final Settings settings;
   final ModelStore store;
   final Updater updater;
   final String version;
   final SpeechModel model;
+  final bool gpuReset;
   final VoidCallback onChangeModel;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
+
+/// The GPU reset is told once per app start, not again on every model switch.
+bool _gpuToldOnce = false;
 
 class _HomeScreenState extends State<HomeScreen> {
   late final LiveTranslator live;
@@ -229,10 +245,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ..listenFrom = s.listenFrom
       ..autoSpeaker = s.autoSpeaker
       ..speak = s.speak;
-    if (s.accelTrying) {
-      // the last run died while trying the hardware route: switch it off for good
-      s.accel = false;
-      s.accelTrying = false;
+    if (widget.gpuReset && !_gpuToldOnce) {
+      _gpuToldOnce = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -242,7 +256,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     live.addListener(() {
       if (!mounted) return;
-      if (widget.settings.accelTrying && live.lines.isNotEmpty) widget.settings.accelTrying = false; // it worked
+      // the GPU route survived loading and a first sentence: it is not crashing
+      if (widget.settings.accelTrying && live.decodes > 0) widget.settings.accelTrying = false;
       setState(() {});
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
@@ -584,17 +599,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   itemBuilder: (_, i) => _LineView(line: live.lines[i], mine: live.mine, mode: live.mode),
                 ),
         ),
-        if (live.running)
+        if (live.running || live.phase == 'decoding' || live.phase == 'missed')
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(children: [
               if (live.phase == 'decoding')
                 const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
               else
-                Icon(Icons.graphic_eq, size: 16, color: live.phase == 'hearing' ? cs.primary : cs.outline),
+                Icon(live.phase == 'missed' ? Icons.hearing_disabled : Icons.graphic_eq,
+                    size: 16, color: live.phase == 'hearing' ? cs.primary : cs.outline),
               const SizedBox(width: 8),
               Text(
-                switch (live.phase) { 'hearing' => 'Hearing you…', 'decoding' => 'Writing it down…', _ => 'Listening' },
+                switch (live.phase) {
+                  'hearing' => 'Hearing you…',
+                  'decoding' => 'Writing it down…',
+                  'missed' => "Didn't catch that. Try again, a little closer.",
+                  _ => 'Listening',
+                },
                 style: Theme.of(context).textTheme.labelMedium,
               ),
             ]),

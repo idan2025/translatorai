@@ -21,6 +21,11 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.3.6: the last sentence is no longer lost when you stop (stop waited 0.3 s, writing takes
+  1-4 s on a phone: "Writing it down…" then nothing, seen with Chinese); the speech model stays
+  loaded between stop and start (was reloaded on every tap); the GPU switch no longer turns
+  itself off on a model switch (crash guard runs once per app start); "Didn't catch that" when a
+  sentence decodes to nothing.
 - 0.3.5: fluency: a tap conversation closes a sentence after 0.4 s of quiet (was 0.5); a
   "Hearing you…" / "Writing it down…" indicator; translation and voices are warmed up in the
   background. User test of 0.3.4 with the GPU switch ON: correct text, and the CPU was a little

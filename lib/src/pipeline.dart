@@ -157,6 +157,77 @@ class LiveTranslator extends ChangeNotifier {
   /// slow for the speech model chosen.
   bool get behind => _waiting >= 3;
 
+  /// Loads the speech model, or keeps the one already loaded when it is the
+  /// same: the model stays in memory between stop and start (loading the
+  /// 1 GB one takes seconds), and goes when this translator is disposed or a
+  /// different model is asked for.
+  Future<bool> _ensureWorker(AsrConfig config) async {
+    final have = _asr;
+    if (have != null && (have.config.sameModel(config) || (_fellBack && have.config.sameModel(config.onCpu())))) {
+      have.setEndSilence(config.endSilence);
+      return true;
+    }
+    await _dropWorker();
+    _fellBack = false;
+    try {
+      _asr = await AsrWorker.start(config);
+    } catch (e) {
+      if (config.provider == 'cpu') {
+        error = '$e';
+        return false;
+      }
+      // the hardware route would not load this model: carry on with the CPU
+      notice = 'The GPU could not run this model; using the CPU.';
+      try {
+        _asr = await AsrWorker.start(config.onCpu());
+        _fellBack = true;
+      } catch (e2) {
+        error = '$e2';
+        return false;
+      }
+    }
+    final w = _asr!;
+    _heardSub = w.heard.listen(_onHeard);
+    _phaseSub = w.phases.listen(_onPhase);
+    _errSub = w.errors.listen((e) {
+      error = e;
+      notifyListeners();
+    });
+    return true;
+  }
+
+  bool _fellBack = false;
+  Timer? _missedTimer;
+
+  /// Sentences written down so far (any outcome): the GPU crash guard reads it.
+  int decodes = 0;
+
+  void _onPhase(String p) {
+    if (phase == 'decoding' && p != 'decoding') decodes++;
+    _missedTimer?.cancel();
+    if (p == 'missed') {
+      // say it for a few seconds, then go quiet again
+      _missedTimer = Timer(const Duration(seconds: 4), () {
+        if (phase == 'missed') {
+          phase = 'idle';
+          notifyListeners();
+        }
+      });
+    }
+    if (p == phase) return;
+    phase = p;
+    notifyListeners();
+  }
+
+  Future<void> _dropWorker() async {
+    await _heardSub?.cancel();
+    await _errSub?.cancel();
+    await _phaseSub?.cancel();
+    _heardSub = _errSub = _phaseSub = null;
+    _asr?.stop();
+    _asr = null;
+  }
+
   Future<void> start(AsrConfig config) async {
     if (running) return;
     error = null;
@@ -166,37 +237,14 @@ class LiveTranslator extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    try {
-      _asr = await AsrWorker.start(config);
-    } catch (e) {
-      if (config.provider != 'cpu') {
-        // the hardware route would not load this model: carry on with the CPU
-        notice = 'Hardware acceleration could not run this model; using the CPU.';
-        try {
-          _asr = await AsrWorker.start(config.onCpu());
-        } catch (e2) {
-          error = '$e2';
-          notifyListeners();
-          return;
-        }
-      } else {
-        error = '$e';
-        notifyListeners();
-        return;
-      }
+    if (!await _ensureWorker(config)) {
+      notifyListeners();
+      return;
     }
     _applyPolicy();
-    _heardSub = _asr!.heard.listen(_onHeard);
-    _phaseSub = _asr!.phases.listen((p) {
-      if (p == phase) return;
-      phase = p;
-      notifyListeners();
-    });
+    _asr!.reset();
+    _decoder.reset();
     _warmUp();
-    _errSub = _asr!.errors.listen((e) {
-      error = e;
-      notifyListeners();
-    });
     final stream = await _mic!.startStream(const RecordConfig(
       encoder: AudioEncoder.pcm16bits,
       sampleRate: sampleRate,
@@ -272,22 +320,21 @@ class LiveTranslator extends ChangeNotifier {
     if (!running) side = null;
   }
 
+  /// Stops listening. The sentence in progress is still written down and
+  /// translated (the old code waited 0.3 s and then threw it away), and the
+  /// speech model stays loaded for the next start.
   Future<void> stop() async {
-    _asr?.flush();
-    await _micSub?.cancel();
-    await _mic?.stop();
-    await _mic?.dispose();
-    _mic = null;
-    await Future.delayed(const Duration(milliseconds: 300));
-    await _heardSub?.cancel();
-    await _errSub?.cancel();
-    await _phaseSub?.cancel();
-    phase = 'idle';
-    _asr?.stop();
-    _asr = null;
+    if (!running) return;
     running = false;
     hearing = false;
     side = null;
+    notifyListeners();
+    await _micSub?.cancel();
+    _micSub = null;
+    await _mic?.stop();
+    await _mic?.dispose();
+    _mic = null;
+    await _asr?.flushAndWait();
     notifyListeners();
   }
 
@@ -358,9 +405,18 @@ class LiveTranslator extends ChangeNotifier {
     }
   }
 
+  bool _disposed = false;
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners(); // the last sentence may land after the screen has gone
+  }
+
   @override
   void dispose() {
-    stop();
+    _disposed = true;
+    _missedTimer?.cancel();
+    stop().whenComplete(_dropWorker); // the speech model leaves memory with the screen
     engine.close();
     guesser.close();
     super.dispose();
