@@ -48,6 +48,10 @@ class Direction {
 Future<Direction> direct(Mode mode, Heard h, TextLanguageGuesser guesser,
     {required String mine, required String theirs, String listenFrom = '', String? lastFrom}) async {
   final script = scriptOf(h.text);
+  // a language the person chose (tapped their side): no guessing at all
+  if (mode == Mode.conversation && h.forced && (h.language == mine || h.language == theirs)) {
+    return Direction(h.language, h.language == mine ? theirs : mine);
+  }
   bool trusted(String l, Set<String> among) => l.isNotEmpty && (among.isEmpty || among.contains(l)) && writtenIn(l, script);
   if (mode == Mode.listen) {
     if (listenFrom.isNotEmpty) return Direction(listenFrom, mine);
@@ -118,6 +122,14 @@ class LiveTranslator extends ChangeNotifier {
   String listenFrom = '';
   bool speak = true;
 
+  /// Conversation: false = the person taps who is speaking (accurate, one
+  /// pass); true = the app tries to tell from the sound (slower, can be wrong).
+  bool autoSpeaker = false;
+
+  /// In a tap conversation: whose language is being listened for now.
+  /// 'mine', 'theirs', or null when nobody has been picked yet.
+  String? side;
+
   final lines = <Line>[];
   bool running = false;
   bool hearing = false;
@@ -155,11 +167,7 @@ class LiveTranslator extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _asr!.setPolicy(LanguagePolicy(
-      // Listen with a language picked: write that language; a conversation: only its two
-      force: mode == Mode.listen ? listenFrom : '',
-      allowed: mode == Mode.conversation ? {mine, theirs} : const {},
-    ));
+    _applyPolicy();
     _heardSub = _asr!.heard.listen(_onHeard);
     _errSub = _asr!.errors.listen((e) {
       error = e;
@@ -191,6 +199,35 @@ class LiveTranslator extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// What the recogniser may write now. Listen with a language picked: that
+  /// one. A tap conversation: the tapped side's. An auto conversation: either.
+  LanguagePolicy get policy {
+    if (mode == Mode.listen) return LanguagePolicy(force: listenFrom);
+    if (!autoSpeaker && side != null) return LanguagePolicy(force: side == 'mine' ? mine : theirs);
+    return LanguagePolicy(allowed: {mine, theirs});
+  }
+
+  void _applyPolicy() => _asr?.setPolicy(policy);
+
+  /// Tap conversation: listen for [which] ('mine' or 'theirs'). Starts the
+  /// microphone if needed; tapping the active side again stops it.
+  Future<void> tapSide(String which, AsrConfig config) async {
+    if (running && side == which) {
+      await stop();
+      return;
+    }
+    if (running) {
+      _asr?.flush(); // finish what the other side was saying under the old language
+      side = which;
+      _applyPolicy();
+      notifyListeners();
+      return;
+    }
+    side = which;
+    await start(config);
+    if (!running) side = null;
+  }
+
   Future<void> stop() async {
     _asr?.flush();
     await _micSub?.cancel();
@@ -204,6 +241,7 @@ class LiveTranslator extends ChangeNotifier {
     _asr = null;
     running = false;
     hearing = false;
+    side = null;
     notifyListeners();
   }
 

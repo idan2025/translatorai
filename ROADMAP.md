@@ -21,6 +21,8 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.3.3: Conversation has two tap-to-speak buttons (language known, one decode instead of up to
+  three; fixes Hebrew heard as English); a Fast model (Whisper base); auto-detect kept as an option.
 - 0.3.2: the phone no longer hears its own translation (microphone closed until the voice
   has really stopped plus 0.9 s, detector reset around it, echo text-match, noise filter
   for text faster than speech); each line shows seconds heard and seconds to write; a

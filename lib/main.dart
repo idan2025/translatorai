@@ -227,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ..mine = s.mine
       ..theirs = s.theirs
       ..listenFrom = s.listenFrom
+      ..autoSpeaker = s.autoSpeaker
       ..speak = s.speak;
     live.addListener(() {
       if (!mounted) return;
@@ -395,6 +396,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// The two big buttons of a tap conversation: each listens in its own language.
+  Widget sideButton(String which, ColorScheme cs) {
+    final code = which == 'mine' ? live.mine : live.theirs;
+    final active = live.running && live.side == which;
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: FilledButton.tonal(
+          onPressed: () => live.tapSide(which, asrConfig),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(88),
+            backgroundColor: active ? cs.error : null,
+            foregroundColor: active ? cs.onError : null,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(active ? Icons.stop : Icons.mic, size: 32),
+            const SizedBox(height: 4),
+            Text(nameOf(code), overflow: TextOverflow.ellipsis),
+            Text(active ? 'Tap to stop' : 'Tap, then speak', style: Theme.of(context).textTheme.labelSmall),
+          ]),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -437,6 +464,13 @@ class _HomeScreenState extends State<HomeScreen> {
                               },
                         child: Text('Delete the ${m.label} model (${(m.bytes / 1e6).round()} MB)'),
                       ),
+                  MenuItemButton(
+                    leadingIcon: Icon(live.autoSpeaker ? Icons.check_box : Icons.check_box_outline_blank),
+                    onPressed: locked
+                        ? null
+                        : () => setState(() => live.autoSpeaker = widget.settings.autoSpeaker = !live.autoSpeaker),
+                    child: const Text('Conversation: detect who speaks (slower)'),
+                  ),
                   MenuItemButton(
                       leadingIcon: const Icon(Icons.system_update), onPressed: checkForUpdates, child: const Text('Check for updates')),
                   MenuItemButton(leadingIcon: const Icon(Icons.info_outline), onPressed: about, child: const Text('About')),
@@ -508,7 +542,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         Expanded(
           child: live.lines.isEmpty
-              ? _Empty(mode: live.mode, running: live.running)
+              ? _Empty(mode: live.mode, running: live.running, auto: live.autoSpeaker)
               : ListView.builder(
                   controller: scroll,
                   padding: const EdgeInsets.all(16),
@@ -520,14 +554,16 @@ class _HomeScreenState extends State<HomeScreen> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.only(bottom: 16, top: 8),
-            child: FloatingActionButton.large(
-              heroTag: 'mic',
-              tooltip: live.running ? 'Stop' : 'Start listening',
-              onPressed: toggle,
-              backgroundColor: live.running ? cs.error : cs.primary,
-              foregroundColor: live.running ? cs.onError : cs.onPrimary,
-              child: Icon(live.running ? Icons.stop : Icons.mic, size: 40),
-            ),
+            child: live.mode == Mode.conversation && !live.autoSpeaker
+                ? Row(children: [sideButton('mine', cs), sideButton('theirs', cs)])
+                : FloatingActionButton.large(
+                    heroTag: 'mic',
+                    tooltip: live.running ? 'Stop' : 'Start listening',
+                    onPressed: toggle,
+                    backgroundColor: live.running ? cs.error : cs.primary,
+                    foregroundColor: live.running ? cs.onError : cs.onPrimary,
+                    child: Icon(live.running ? Icons.stop : Icons.mic, size: 40),
+                  ),
           ),
         ),
       ]),
@@ -552,17 +588,19 @@ class _Chip extends StatelessWidget {
 }
 
 class _Empty extends StatelessWidget {
-  const _Empty({required this.mode, required this.running});
+  const _Empty({required this.mode, required this.running, required this.auto});
   final Mode mode;
   final bool running;
+  final bool auto;
   @override
   Widget build(BuildContext context) {
     final text = running
         ? 'Listening…'
         : mode == Mode.listen
             ? 'Tap the microphone. Everything said around you is translated into your language. Put in earbuds to hear it.'
-            : 'Tap the microphone and put the phone between you. Each of you speaks your own language; '
-                'the app works out who is talking.';
+            : auto
+                ? 'Tap the microphone and put the phone between you. The app works out who is talking from the sound: slower, and it can be wrong.'
+                : 'Tap your language, then speak. The other person taps theirs. One pass per sentence: fast and exact.';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),

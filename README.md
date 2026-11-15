@@ -12,9 +12,11 @@ download the models.
 - **Listen**: everything said around you becomes your language, as text and
   (optionally) a voice in your earbuds. The spoken language is detected per
   sentence, so a room with several languages works.
-- **Conversation**: two people, two languages, one phone between them. Each
-  sentence is translated into the other person's language; the app tells who is
-  speaking from the language it hears.
+- **Conversation**: two people, two languages, one phone between them. Two big
+  buttons, one per language: tap yours and speak, the other person taps theirs.
+  The model is told the language, so it makes one pass per sentence and cannot
+  pick the wrong one. (Settings can switch to detecting who speaks from the
+  sound: slower, and it misjudges short phrases.)
 
 ## How it works
 
@@ -26,7 +28,7 @@ microphone (16 kHz) → Silero VAD → Whisper, language-controlled → translat
 | Stage | Model | Size | Languages |
 | --- | --- | --- | --- |
 | Voice activity | Silero VAD | 0.6 MB | all |
-| Speech to text | OpenAI Whisper small (Standard) or large-v3-turbo (Best), int8, via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | 375 MB / 1 GB | 99 |
+| Speech to text | OpenAI Whisper base (Fast), small (Standard) or large-v3-turbo (Best), int8, via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | 160 MB / 375 MB / 1 GB | 99 |
 | Which language | Whisper's own guess, checked against the alphabet, then Google ML Kit language identification | built in | 100+ |
 | Translation | Google ML Kit on-device translation | ~30 MB per language | 59, any to any |
 | Voice | the phone's own text-to-speech | built in | whatever voices the phone has |

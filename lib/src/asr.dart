@@ -42,13 +42,16 @@ class LanguagePolicy {
 
 /// One stretch of speech, as heard.
 class Heard {
-  const Heard(this.text, this.seconds, this.decodeMs, {this.language = ''});
+  const Heard(this.text, this.seconds, this.decodeMs, {this.language = '', this.forced = false});
   final String text;
   final double seconds;
   final int decodeMs;
 
   /// The language it was written in ('' when unknown).
   final String language;
+
+  /// Written in a language the person chose, not one the model guessed.
+  final bool forced;
 
   @override
   String toString() => '[$language ${seconds.toStringAsFixed(1)}s ${decodeMs}ms] $text';
@@ -187,7 +190,7 @@ class Asr {
     }
     final seconds = samples.length / sampleRate;
     if (r.text.isEmpty || !plausible(r.text, seconds)) return null;
-    return Heard(r.text, seconds, sw.elapsedMilliseconds, language: r.lang);
+    return Heard(r.text, seconds, sw.elapsedMilliseconds, language: r.lang, forced: p.force.isNotEmpty);
   }
 
   void free() {

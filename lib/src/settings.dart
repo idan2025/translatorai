@@ -25,6 +25,10 @@ class Settings {
   String get listenFrom => _p.getString('listenFrom') ?? '';
   set listenFrom(String v) => _p.setString('listenFrom', v);
 
+  /// Conversation: tell who is speaking from the sound (off = tap the speaker).
+  bool get autoSpeaker => _p.getBool('autoSpeaker') ?? false;
+  set autoSpeaker(bool v) => _p.setBool('autoSpeaker', v);
+
   bool get speak => _p.getBool('speak') ?? true;
   set speak(bool v) => _p.setBool('speak', v);
 }

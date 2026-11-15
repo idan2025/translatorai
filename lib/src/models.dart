@@ -28,6 +28,7 @@ class SpeechModel {
 
 const _hf = 'https://huggingface.co/csukuangfj';
 const _small = '$_hf/sherpa-onnx-whisper-small/resolve/8f3c18b358db4d1f2fc1eae49d75cd20989e4309';
+const _base = '$_hf/sherpa-onnx-whisper-base/resolve/bb53ee204431c90d314c1cc08d28d23e5b7927cc';
 const _turbo = '$_hf/sherpa-onnx-whisper-turbo/resolve/2ca6ff69fc878651b770880507669577ac41c2ff';
 
 const vadModel = ModelFile(
@@ -43,9 +44,19 @@ const _tokens = ModelFile('whisper-tokens.txt', '$_small/small-tokens.txt',
 
 const speechModels = <SpeechModel>[
   SpeechModel(
+    'whisper-base',
+    'Fast',
+    'Whisper base · 99 languages · 160 MB · about 3x faster; rough on Hebrew and rare languages',
+    ModelFile('whisper-base-encoder.int8.onnx', '$_base/base-encoder.int8.onnx',
+        '0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11', 29120534),
+    ModelFile('whisper-base-decoder.int8.onnx', '$_base/base-decoder.int8.onnx',
+        '9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d', 130672026),
+    _tokens,
+  ),
+  SpeechModel(
     'whisper-small',
     'Standard',
-    'Whisper small · 99 languages · 375 MB · most phones',
+    'Whisper small · 99 languages · 375 MB · good balance',
     ModelFile('whisper-small-encoder.int8.onnx', '$_small/small-encoder.int8.onnx',
         '4cbe7b22fa9026b843b60a68640c747de05bafb1a11b57edc0e66c232d9f33a9', 112442483),
     ModelFile('whisper-small-decoder.int8.onnx', '$_small/small-decoder.int8.onnx',
@@ -55,7 +66,7 @@ const speechModels = <SpeechModel>[
   SpeechModel(
     'whisper-turbo',
     'Best',
-    'Whisper large-v3-turbo · 99 languages · 1 GB · recent phones with 6 GB+ RAM',
+    'Whisper large-v3-turbo · 99 languages · 1 GB · most accurate, slow: for recent phones, short sentences',
     ModelFile('whisper-turbo-encoder.int8.onnx', '$_turbo/turbo-encoder.int8.onnx',
         'b02dcdf54f348741e93fe732b67d933c8dcb6735655f710640143081db38878b', 674716297),
     ModelFile('whisper-turbo-decoder.int8.onnx', '$_turbo/turbo-decoder.int8.onnx',
@@ -64,8 +75,9 @@ const speechModels = <SpeechModel>[
   ),
 ];
 
+/// The model used when nothing is chosen yet (or the chosen id is gone): Standard.
 SpeechModel speechModelById(String id) =>
-    speechModels.firstWhere((m) => m.id == id, orElse: () => speechModels.first);
+    speechModels.firstWhere((m) => m.id == id, orElse: () => speechModels.firstWhere((m) => m.id == 'whisper-small'));
 
 /// Every file any speech model needs, plus the voice detector.
 final List<ModelFile> allModelFiles = [vadModel, for (final m in speechModels) ...m.files];

@@ -41,6 +41,12 @@ void main() {
       expect(await direct(Mode.conversation, hr('מה זה', 'he'), g, mine: 'en', theirs: 'ru', lastFrom: 'en'),
           const Direction('ru', 'en', guessed: true));
     });
+    test('a tapped side is trusted without any guessing, whatever the alphabet', () async {
+      final tapped = Heard('Booker Tove', 1, 1, language: 'he', forced: true);
+      expect(await direct(Mode.conversation, tapped, g, mine: 'en', theirs: 'he'), const Direction('he', 'en'));
+      final mineTapped = Heard('good morning', 1, 1, language: 'en', forced: true);
+      expect(await direct(Mode.conversation, mineTapped, g, mine: 'en', theirs: 'he'), const Direction('en', 'he'));
+    });
     test('two languages in one alphabet: the identifier picks between them only', () async {
       expect(await direct(Mode.conversation, hr('pausa'), g, mine: 'en', theirs: 'es'), const Direction('es', 'en'));
       expect(await direct(Mode.conversation, hr('qwerty'), g, mine: 'en', theirs: 'es', lastFrom: 'es'),
@@ -191,8 +197,8 @@ void main() {
       expect(dir.listSync().map((e) => e.uri.pathSegments.last), ['keep.onnx']);
     });
 
-    test('the old Omnilingual id falls back to the first model, so setup downloads it', () {
-      expect(speechModelById('omni-1b').id, speechModels.first.id);
+    test('an unknown or old model id falls back to Standard, so setup downloads it', () {
+      expect(speechModelById('omni-1b').id, 'whisper-small');
     });
 
     test('every shipped model file is pinned to a digest', () {
