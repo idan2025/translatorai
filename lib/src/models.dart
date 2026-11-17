@@ -105,6 +105,63 @@ const hebrewPack = LanguagePack(
 
 const languagePacks = <LanguagePack>[hebrewPack];
 
+/// One translation direction of a [TranslationPack]: an Opus-MT model run by
+/// the app itself (`lib/src/marian.dart`), its files named `mt-<from>-<to>-…`.
+class TranslationDirection {
+  const TranslationDirection(this.from, this.to, this.files);
+  final String from, to;
+  final List<ModelFile> files;
+
+  /// The file-name prefix the model's files share on the phone.
+  String get prefix => 'mt-$from-$to-';
+  int get bytes => files.fold(0, (a, f) => a + f.bytes);
+}
+
+/// Opus-MT translation models for one language and English, both ways: more
+/// fluent than ML Kit's for that language. Other pairs with the language go
+/// through English (ML Kit for the other side).
+class TranslationPack {
+  const TranslationPack(this.id, this.label, this.note, this.language, this.directions);
+  final String id, label, note, language;
+  final List<TranslationDirection> directions;
+  List<ModelFile> get files => [for (final d in directions) ...d.files];
+  int get bytes => files.fold(0, (a, f) => a + f.bytes);
+}
+
+/// Exported to ONNX and quantised to int8 from Helsinki-NLP's models (University
+/// of Helsinki, Tiedemann et al.): opus-mt-tc-big-he-en (CC-BY 4.0) and
+/// opus-mt-en-he (Apache-2.0). Hosted as assets of this project's release
+/// `models-mt-1`. FLEURS chrF, 60 sentences, greedy, as the app runs it:
+/// he→en 68.8, en→he 56.8.
+const _mt = 'https://github.com/idan2025/translatorai/releases/download/models-mt-1';
+
+ModelFile _mtFile(String d, String f, String sha, int bytes) => ModelFile('mt-$d-$f', '$_mt/mt-$d-$f', sha, bytes);
+
+final hebrewTranslationPack = TranslationPack(
+  'hebrew-mt',
+  'Hebrew translation pack',
+  'Opus-MT Hebrew ⇄ English · 515 MB · more fluent Hebrew translation, fully offline',
+  'he',
+  [
+    TranslationDirection('he', 'en', [
+      _mtFile('he-en', 'encoder.int8.onnx', 'ce843cbb8abbf79ed08a4918b69be5bf8de8046148ed8f5e1dbcee56bf76893d', 138724310),
+      _mtFile('he-en', 'decoder.int8.onnx', '0df85ec1a6ac4d3079b6d35e29c9fbbf57869c302ee227362ebf7ac33d6d60bd', 226519278),
+      _mtFile('he-en', 'source.spm', '13dabf370542066abcfd660e72887d0ce1296a04e15913d2ec47793656434257', 881489),
+      _mtFile('he-en', 'vocab.json', 'abe93c914993f4dd8c10a7ff9cd97e813fcd1dd28dafb539504b509d8ad6183f', 2072892),
+      _mtFile('he-en', 'config.json', 'ed3bfdb55358f54eaf7f13266c7742b47ed282a041c78ae1e610289dd6d41125', 1018),
+    ]),
+    TranslationDirection('en', 'he', [
+      _mtFile('en-he', 'encoder.int8.onnx', 'cbfd33d39ab9588cd7055fe9f5e8c30f81f2292f6030f0d09eba69e9b9931213', 53150455),
+      _mtFile('en-he', 'decoder.int8.onnx', '9042e911c7c7dcd189e32b336b09e9ed70582b2ed1ff20b7403475433f2ec57f', 94015921),
+      _mtFile('en-he', 'source.spm', 'd390d1e87cfdc0f22eeb61aa787992cd4d622bbf8f5b9ae53eef3e9fda478967', 799290),
+      _mtFile('en-he', 'vocab.json', '89133153ba25b6e818fa06c49682565ce8d62f17122c2b9a747691f174d3df3f', 2285475),
+      _mtFile('en-he', 'config.json', '9ab6522942d36619903663fd7d4127e9a8f9d4eb6fca554f257e35da726da8bd', 1298),
+    ]),
+  ],
+);
+
+final translationPacks = <TranslationPack>[hebrewTranslationPack];
+
 /// The model used when nothing is chosen yet (or the chosen id is gone): Standard.
 SpeechModel speechModelById(String id) =>
     speechModels.firstWhere((m) => m.id == id, orElse: () => speechModels.firstWhere((m) => m.id == 'whisper-small'));
@@ -114,4 +171,5 @@ final List<ModelFile> allModelFiles = [
   vadModel,
   for (final m in speechModels) ...m.files,
   for (final k in languagePacks) ...k.files,
+  for (final t in translationPacks) ...t.files,
 ];

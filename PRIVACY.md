@@ -10,6 +10,7 @@ The app connects to the internet only to download things, never to send what you
 | When | To | What is fetched |
 | --- | --- | --- |
 | First run, or when you pick another speech model | `huggingface.co`, `github.com` | The speech model files, checked against a fixed SHA-256 before use |
+| Settings › Download the Hebrew translation pack | `github.com` | The Opus-MT translation model files, checked against a fixed SHA-256 before use |
 | When you pick a language, or in Offline languages | Google (ML Kit) | That language's translation model (~30 MB); after that it works offline |
 | Settings › Check for updates | `api.github.com`, `github.com` | The list of releases and, if you accept, the newer APK (checked against its SHA-256) |
 

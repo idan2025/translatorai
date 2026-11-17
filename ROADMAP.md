@@ -21,6 +21,12 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.6.0: **Hebrew translation pack** (Settings, 515 MB): Opus-MT tc-big he→en and opus-mt en→he,
+  int8 ONNX, run by the app itself (`lib/src/ort.dart` binds the ONNX Runtime sherpa-onnx already
+  ships; `lib/src/spm.dart` is a SentencePiece tokenizer, same ids as Python on 60/60 sentences;
+  `lib/src/marian.dart` greedy decoding). Desktop chrF he→en 68.8, en→he 56.8 (119 / 66 ms a
+  sentence). Pairs with Hebrew on one side go through English. The quality test scores the pack
+  and ML Kit side by side.
 - 0.5.1: Hebrew pack starts faster: a warm-up decode while it loads, and no words-while-speaking
   decodes on the 1 GB Hebrew model (they competed with the real decode for the CPU).
 - 0.5.0: **Hebrew speech pack** (ivrit.ai Hebrew Whisper, 1 GB, Apache-2.0; used only when Hebrew is
@@ -73,6 +79,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | Opus-MT (tc-big he-en; base for the rest) | 68.9 | 57.7 | 59.8 | 55.2 | ~75-300 MB per direction | CC-BY 4.0 / Apache-2.0 |
 | M2M-100 418M | 62.0 | 50.7 | 58.7 | 53.4 | ~450 MB | MIT |
+| Opus-MT int8 greedy, as the app runs it (0.6.0) | 68.8 | 56.8 | | | 366 + 149 MB | CC-BY 4.0 / Apache-2.0 |
 | Google ML Kit (the app's engine) | run Settings > Translation quality test | | | | ~30 MB per language | ML Kit terms |
 | NLLB-200 | not used | | | | | CC-BY-NC: cannot ship in a paid app |
 

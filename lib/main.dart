@@ -12,6 +12,7 @@ import 'src/asr.dart';
 import 'src/languages.dart';
 import 'src/model_store.dart';
 import 'src/models.dart';
+import 'src/opus_engine.dart';
 
 import 'src/pipeline.dart';
 import 'src/settings.dart';
@@ -34,6 +35,11 @@ Future<void> main() async {
         'Voice activity detection: Silero VAD, MIT License, Copyright (c) 2020-present Silero Team.');
     yield const LicenseEntryWithLineBreaks(['sherpa-onnx'],
         'Speech runtime: sherpa-onnx and ONNX Runtime, Apache License 2.0 and MIT License respectively.');
+    yield const LicenseEntryWithLineBreaks(['Opus-MT'],
+        'Hebrew translation pack: Helsinki-NLP opus-mt-tc-big-he-en (CC-BY 4.0, '
+        'https://creativecommons.org/licenses/by/4.0/) and opus-mt-en-he (Apache License 2.0), by Jörg Tiedemann and the '
+        'Language Technology Research Group at the University of Helsinki, trained on OPUS data. Exported to ONNX and '
+        'quantised to int8 for this app (changes: format and weight precision only).');
     yield const LicenseEntryWithLineBreaks(['Google ML Kit'],
         'On-device translation and language identification: Google ML Kit, used under the ML Kit Terms of Service '
         '(https://developers.google.com/ml-kit/terms).');
@@ -263,7 +269,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     final s = widget.settings;
-    live = LiveTranslator(engine: MlKitEngine(), speaker: Speaker(), guesser: MlKitGuesser())
+    engine = PackEngine(fallback: MlKitEngine(), installed: (d) => widget.store.hasAll(d.files), pathOf: widget.store.pathOf);
+    live = LiveTranslator(engine: engine, speaker: Speaker(), guesser: MlKitGuesser())
       ..mode = s.mode
       ..mine = s.mine
       ..theirs = s.theirs
@@ -353,6 +360,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
 
   bool get hebrewPackInstalled => widget.store.hasAll(hebrewPack.files);
+  bool get hebrewTranslationInstalled => widget.store.hasAll(hebrewTranslationPack.files);
+
+  /// The app's translator: the installed translation packs, then ML Kit.
+  late final PackEngine engine;
 
   /// What the translator may load: the chosen model, and the Hebrew pack when it is
   /// installed and switched on. Refreshed whenever any of that changes.
@@ -409,6 +420,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     if (choice.code.isNotEmpty) _prepare([choice.code]);
     if (choice.code == 'he' && !hebrewPackInstalled && widget.settings.hebrewPack) await offerHebrewPack();
+    if (choice.code == 'he' && !hebrewTranslationInstalled && !widget.settings.mtOffered && mounted) await offerTranslationPack();
     refreshConfigs();
     live.preload(); // the Hebrew pack loads as soon as Hebrew is chosen
   }
@@ -431,6 +443,55 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (go == true && mounted) await downloadHebrewPack();
+  }
+
+  /// Hebrew translation is more fluent with Opus-MT than with ML Kit: offer it once
+  /// when Hebrew is chosen (it stays in Settings afterwards).
+  Future<void> offerTranslationPack() async {
+    widget.settings.mtOffered = true;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('More fluent Hebrew translation?'),
+        content: Text('The Hebrew translation pack translates Hebrew ⇄ English with larger models than the standard '
+            'translator, fully offline. It is ${(hebrewTranslationPack.bytes / 1e6).round()} MB. Download it now, on Wi-Fi?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Download')),
+        ],
+      ),
+    );
+    if (go == true && mounted) await downloadTranslationPack();
+  }
+
+  Future<void> downloadTranslationPack() async {
+    final progress = ValueNotifier<double>(0);
+    final messenger = ScaffoldMessenger.of(context);
+    final mb = (hebrewTranslationPack.bytes / 1e6).round();
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: const Text('Downloading the Hebrew translation pack'),
+        content: ValueListenableBuilder<double>(
+          valueListenable: progress,
+          builder: (_, v, _) => Column(mainAxisSize: MainAxisSize.min, children: [
+            LinearProgressIndicator(value: v),
+            const SizedBox(height: 8),
+            Text('${(v * 100).toStringAsFixed(0)}% of $mb MB'),
+          ]),
+        ),
+      ),
+    );
+    try {
+      await widget.store.ensure(hebrewTranslationPack.files, onProgress: (d, t) => progress.value = d / t);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      progress.dispose();
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> downloadHebrewPack() async {
@@ -678,6 +739,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         : 'Download the Hebrew speech pack (${(hebrewPack.bytes / 1e6).round()} MB)'),
                   ),
                   MenuItemButton(
+                    leadingIcon: Icon(hebrewTranslationInstalled ? Icons.delete_outline : Icons.download),
+                    onPressed: () async {
+                      if (hebrewTranslationInstalled) {
+                        await engine.unload(); // its models leave memory before their files go
+                        await widget.store.deleteModel(hebrewTranslationPack.files);
+                        if (mounted) setState(() {});
+                      } else {
+                        await downloadTranslationPack();
+                      }
+                    },
+                    child: Text(hebrewTranslationInstalled
+                        ? 'Delete the Hebrew translation pack (${(hebrewTranslationPack.bytes / 1e6).round()} MB)'
+                        : 'Download the Hebrew translation pack (${(hebrewTranslationPack.bytes / 1e6).round()} MB)'),
+                  ),
+                  MenuItemButton(
                     leadingIcon: Icon(live.showPartials ? Icons.check_box : Icons.check_box_outline_blank),
                     onPressed: () => setState(() => live.showPartials = widget.settings.partials = !live.showPartials),
                     child: const Text('Show words while I speak'),
@@ -709,7 +785,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
                   MenuItemButton(
                     leadingIcon: const Icon(Icons.science_outlined),
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TranslationBenchmark(engine: live.engine))),
+                    onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TranslationBenchmark(
+                        engines: [engine, if (engine.name != engine.fallback.name) engine.fallback]))),
                     child: const Text('Translation quality test…'),
                   ),
                   MenuItemButton(leadingIcon: const Icon(Icons.info_outline), onPressed: about, child: const Text('About')),

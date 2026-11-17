@@ -43,6 +43,10 @@ class Settings {
   bool get hebrewPack => _p.getBool('hebrewPack') ?? true;
   set hebrewPack(bool v) => _p.setBool('hebrewPack', v);
 
+  /// The Hebrew translation pack was offered once (it stays in Settings after a "Not now").
+  bool get mtOffered => _p.getBool('mtOffered') ?? false;
+  set mtOffered(bool v) => _p.setBool('mtOffered', v);
+
   /// Show the words of a sentence while it is still being spoken.
   bool get partials => _p.getBool('partials') ?? true;
   set partials(bool v) => _p.setBool('partials', v);

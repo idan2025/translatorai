@@ -12,14 +12,18 @@ import 'src/translator.dart';
 /// so the engine's quality can be compared with other engines by number rather
 /// than by feel. Needs the Hebrew and Russian translation models (~30 MB each).
 class TranslationBenchmark extends StatefulWidget {
-  const TranslationBenchmark({super.key, required this.engine});
-  final TranslationEngine engine;
+  const TranslationBenchmark({super.key, required this.engines});
+
+  /// Each engine is scored on the same sentences, side by side (the app's
+  /// engine, and ML Kit alone when a translation pack is installed).
+  final List<TranslationEngine> engines;
   @override
   State<TranslationBenchmark> createState() => _TranslationBenchmarkState();
 }
 
 class _Row {
-  _Row(this.from, this.to);
+  _Row(this.engine, this.from, this.to);
+  final TranslationEngine engine;
   final String from, to;
   double? score;
   double? msPerSentence;
@@ -27,8 +31,11 @@ class _Row {
 }
 
 class _TranslationBenchmarkState extends State<TranslationBenchmark> {
-  final rows = [for (final p in const [('he', 'en'), ('en', 'he'), ('ru', 'en'), ('en', 'ru'), ('he', 'ru'), ('ru', 'he')]) _Row(p.$1, p.$2)];
-  String status = 'Ready. Runs 6 directions × 60 sentences, about a minute.';
+  late final rows = [
+    for (final e in widget.engines)
+      for (final p in const [('he', 'en'), ('en', 'he'), ('ru', 'en'), ('en', 'ru'), ('he', 'ru'), ('ru', 'he')]) _Row(e, p.$1, p.$2)
+  ];
+  late String status = 'Ready. Runs 6 directions × 60 sentences${widget.engines.length > 1 ? ' for each engine' : ''}, about a minute each.';
   bool running = false;
   List<Map<String, dynamic>> sentences = [];
 
@@ -40,16 +47,18 @@ class _TranslationBenchmarkState extends State<TranslationBenchmark> {
     try {
       final raw = jsonDecode(await rootBundle.loadString('assets/bench/sentences.json')) as Map<String, dynamic>;
       sentences = (raw['sentences'] as List).cast<Map<String, dynamic>>();
-      for (final c in const ['he', 'ru', 'en']) {
-        setState(() => status = 'Preparing the ${nameOf(c)} translation model (downloads once)…');
-        await widget.engine.prepare(c);
+      for (final e in widget.engines) {
+        for (final c in const ['he', 'ru', 'en']) {
+          setState(() => status = 'Preparing the ${nameOf(c)} translation model (downloads once)…');
+          await e.prepare(c);
+        }
       }
       for (final r in rows) {
-        setState(() => status = 'Translating ${nameOf(r.from)} → ${nameOf(r.to)}…');
+        setState(() => status = '${r.engine.name}: translating ${nameOf(r.from)} → ${nameOf(r.to)}…');
         final sw = Stopwatch()..start();
         final out = <String>[];
         for (final s in sentences) {
-          out.add(await widget.engine.translate(s[r.from] as String, from: r.from, to: r.to));
+          out.add(await r.engine.translate(s[r.from] as String, from: r.from, to: r.to));
         }
         sw.stop();
         r.output = out;
@@ -66,12 +75,11 @@ class _TranslationBenchmarkState extends State<TranslationBenchmark> {
 
   void copy() {
     final data = {
-      'engine': widget.engine.name,
       'metric': 'chrF (sacreBLEU defaults), 60 FLEURS sentences',
       'results': [
         for (final r in rows)
           if (r.score != null)
-            {'pair': '${r.from}-${r.to}', 'chrF': double.parse(r.score!.toStringAsFixed(1)), 'ms_per_sentence': r.msPerSentence!.round(), 'output': r.output}
+            {'engine': r.engine.name, 'pair': '${r.from}-${r.to}', 'chrF': double.parse(r.score!.toStringAsFixed(1)), 'ms_per_sentence': r.msPerSentence!.round(), 'output': r.output}
       ],
     };
     Clipboard.setData(ClipboardData(text: jsonEncode(data)));
@@ -84,11 +92,14 @@ class _TranslationBenchmarkState extends State<TranslationBenchmark> {
     return Scaffold(
       appBar: AppBar(title: const Text('Translation quality test')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        Text('Engine: ${widget.engine.name}', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
         Text(status),
         const SizedBox(height: 16),
-        for (final r in rows)
+        for (final r in rows) ...[
+          if (r == rows.firstWhere((x) => x.engine == r.engine))
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(r.engine.name, style: Theme.of(context).textTheme.titleMedium),
+            ),
           ListTile(
             title: Text('${nameOf(r.from)} → ${nameOf(r.to)}'),
             subtitle: r.msPerSentence == null ? null : Text('${r.msPerSentence!.round()} ms per sentence'),
@@ -96,6 +107,7 @@ class _TranslationBenchmarkState extends State<TranslationBenchmark> {
                 ? const Text('—')
                 : Text('chrF ${r.score!.toStringAsFixed(1)}', style: Theme.of(context).textTheme.titleMedium),
           ),
+        ],
         const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: running ? null : run,
