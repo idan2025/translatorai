@@ -160,8 +160,8 @@ class LiveTranslator extends ChangeNotifier {
   bool get showPartials => _partials;
   set showPartials(bool v) {
     _partials = v;
-    for (final w in _workers.values) {
-      w.setPartials(v);
+    for (final e in _workers.entries) {
+      e.value.setPartials(v && e.key != 'he');
     }
     if (!v) partial = '';
   }
@@ -230,7 +230,9 @@ class LiveTranslator extends ChangeNotifier {
         return false;
       }
     }
-    w.setPartials(_partials);
+    // the 1 GB Hebrew model is too heavy to also decode while speaking: those extra
+    // decodes compete with the real one for the CPU and slow the sentence down
+    w.setPartials(_partials && key != 'he');
     _workers[key] = w;
     _subs[key] = [
       w.heard.listen(_onHeard),

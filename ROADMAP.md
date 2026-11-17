@@ -21,6 +21,8 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.5.1: Hebrew pack starts faster: a warm-up decode while it loads, and no words-while-speaking
+  decodes on the 1 GB Hebrew model (they competed with the real decode for the CPU).
 - 0.5.0: **Hebrew speech pack** (ivrit.ai Hebrew Whisper, 1 GB, Apache-2.0; used only when Hebrew is
   spoken; the other language keeps the normal model); **1.5 s of silence after every sentence**
   (sherpa-onnx's Whisper drops the last words of audio that ends abruptly: Hebrew words wrong

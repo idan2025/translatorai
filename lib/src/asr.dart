@@ -98,6 +98,27 @@ class Asr {
   Asr(this.config) {
     _vad = _makeVad(config.endSilence);
     _rec = so.OfflineRecognizer(_cfg(''));
+    _warmUp();
+  }
+
+  /// The first decode of a freshly loaded model is several times slower than the
+  /// rest (the 1 GB weights are paged in and the runtime builds its buffers on
+  /// first use). Pay that here, while the app shows "loading", with a short
+  /// stretch of faint noise that makes the decoder run too, not with the
+  /// first sentence anyone speaks.
+  void _warmUp() {
+    try {
+      final n = sampleRate * 2;
+      final noise = Float32List(n);
+      var x = 12345;
+      for (var i = 0; i < n; i++) {
+        x = (x * 1103515245 + 12345) & 0x7fffffff;
+        noise[i] = ((x / 0x7fffffff) - 0.5) * 0.02;
+      }
+      _decode(noise, '');
+    } catch (_) {
+      // a failed warm-up changes nothing: the real decode will report any real fault
+    }
   }
 
   so.VoiceActivityDetector _makeVad(double endSilence) => so.VoiceActivityDetector(
