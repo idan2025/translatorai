@@ -21,6 +21,9 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.8.0: one Settings screen (`lib/settings_screen.dart`) instead of a long submenu: sections for speech
+  model, Hebrew packs, languages, listening, app. Each model/pack is a row with its size and a Get /
+  Use / Delete button, so anything can be downloaded ahead of time (one at a time, with progress).
 - 0.7.1: when a sentence takes more than 2.5x its length to write, the app says why if it can know:
   battery saver on, phone hot (thermal status), battery under 15% and not charging. (A user's 2.4 s
   sentence took 9.6 s at 2% battery.)

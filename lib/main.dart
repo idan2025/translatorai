@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'bench_screen.dart';
+import 'settings_screen.dart';
 import 'src/asr.dart';
 import 'src/languages.dart';
 import 'src/model_store.dart';
@@ -123,7 +124,10 @@ class _GateState extends State<Gate> {
       updater: widget.updater,
       version: widget.version,
       gpuReset: widget.gpuReset,
-      onChangeModel: () => setState(() => choosing = true),
+      onUseModel: (m) => setState(() {
+        widget.settings.model = m.id;
+        model = m;
+      }),
     );
   }
 }
@@ -238,14 +242,14 @@ class HomeScreen extends StatefulWidget {
       required this.updater,
       required this.version,
       this.gpuReset = false,
-      required this.onChangeModel});
+      required this.onUseModel});
   final Settings settings;
   final ModelStore store;
   final Updater updater;
   final String version;
   final SpeechModel model;
   final bool gpuReset;
-  final VoidCallback onChangeModel;
+  final void Function(SpeechModel) onUseModel;
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -639,6 +643,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  void openSettings() {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => SettingsScreen(
+        settings: widget.settings,
+        store: widget.store,
+        live: live,
+        model: widget.model,
+        version: widget.version,
+        ramGb: ramGb,
+        actions: SettingsActions(
+          useModel: (m) {
+            Navigator.of(context).pop();
+            widget.onUseModel(m);
+          },
+          packsChanged: () async {
+            refreshConfigs();
+            live.preload();
+            if (mounted) setState(() {});
+          },
+          settle: settle,
+          isBusy: () => busy,
+          freeTranslationPack: engine.unload,
+          checkForUpdates: checkForUpdates,
+          offlineLanguages: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => OfflineLanguages(engine: live.engine, inUse: {live.mine, live.theirs, live.listenFrom}))),
+          qualityTest: () => Navigator.of(context).push(MaterialPageRoute<void>(
+              builder: (_) => TranslationBenchmark(engines: [engine, if (engine.name != engine.fallback.name) engine.fallback]))),
+          about: about,
+          exit: exitApp,
+        ),
+      ),
+    ));
+  }
+
   Future<void> exitApp() async {
     await live.stop();
     await SystemNavigator.pop();
@@ -731,102 +769,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             menuChildren: [
               MenuItemButton(leadingIcon: const Icon(Icons.delete_sweep), onPressed: live.clear, child: const Text('Clear transcript')),
-              SubmenuButton(
-                leadingIcon: const Icon(Icons.settings),
-                menuChildren: [
-                  MenuItemButton(
-                    leadingIcon: const Icon(Icons.record_voice_over),
-                    onPressed: locked ? null : widget.onChangeModel,
-                    child: Text('Speech model: ${widget.model.label}'),
-                  ),
-                  // downloaded models are kept so switching back is instant; this frees the space
-                  for (final m in speechModels)
-                    if (m.id != widget.model.id && widget.store.hasAny(m.files))
-                      MenuItemButton(
-                        leadingIcon: const Icon(Icons.delete_outline),
-                        onPressed: locked
-                            ? null
-                            : () async {
-                                await widget.store.deleteModel(m.files, except: widget.model.files);
-                                if (mounted) setState(() {});
-                              },
-                        child: Text('Delete the ${m.label} model (${(m.bytes / 1e6).round()} MB)'),
-                      ),
-                  MenuItemButton(
-                    leadingIcon: Icon(hebrewPackInstalled ? Icons.delete_outline : Icons.download),
-                    onPressed: locked
-                        ? null
-                        : () async {
-                            await settle();
-                            if (hebrewPackInstalled) {
-                              await widget.store.deleteModel(hebrewPack.files, except: widget.model.files);
-                              refreshConfigs();
-                              live.preload(); // frees its memory
-                              if (mounted) setState(() {});
-                            } else {
-                              await downloadHebrewPack();
-                            }
-                          },
-                    child: Text(hebrewPackInstalled
-                        ? 'Delete the Hebrew speech pack (${(hebrewPack.bytes / 1e6).round()} MB)'
-                        : 'Download the Hebrew speech pack (${(hebrewPack.bytes / 1e6).round()} MB)'),
-                  ),
-                  MenuItemButton(
-                    leadingIcon: Icon(hebrewTranslationInstalled ? Icons.delete_outline : Icons.download),
-                    onPressed: () async {
-                      if (hebrewTranslationInstalled) {
-                        await engine.unload(); // its models leave memory before their files go
-                        await widget.store.deleteModel(hebrewTranslationPack.files);
-                        if (mounted) setState(() {});
-                      } else {
-                        await downloadTranslationPack();
-                      }
-                    },
-                    child: Text(hebrewTranslationInstalled
-                        ? 'Delete the Hebrew translation pack (${(hebrewTranslationPack.bytes / 1e6).round()} MB)'
-                        : 'Download the Hebrew translation pack (${(hebrewTranslationPack.bytes / 1e6).round()} MB)'),
-                  ),
-                  MenuItemButton(
-                    leadingIcon: Icon(live.showPartials ? Icons.check_box : Icons.check_box_outline_blank),
-                    onPressed: () => setState(() => live.showPartials = widget.settings.partials = !live.showPartials),
-                    child: const Text('Show words and their translation while I speak'),
-                  ),
-                  MenuItemButton(
-                    leadingIcon: Icon(live.autoSpeaker ? Icons.check_box : Icons.check_box_outline_blank),
-                    onPressed: locked
-                        ? null
-                        : () async {
-                            await settle();
-                            setState(() => live.autoSpeaker = widget.settings.autoSpeaker = !live.autoSpeaker);
-                          },
-                    child: const Text('Conversation: detect who speaks (slower)'),
-                  ),
-                  MenuItemButton(
-                    leadingIcon: Icon(widget.settings.accel ? Icons.check_box : Icons.check_box_outline_blank),
-                    onPressed: locked
-                        ? null
-                        : () => setState(() => widget.settings.accel = !widget.settings.accel),
-                    child: const Text('Use the GPU (experimental)'),
-                  ),
-                  MenuItemButton(
-                      leadingIcon: const Icon(Icons.system_update), onPressed: checkForUpdates, child: const Text('Check for updates')),
-                  MenuItemButton(
-                    leadingIcon: const Icon(Icons.download_for_offline_outlined),
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                        builder: (_) => OfflineLanguages(engine: live.engine, inUse: {live.mine, live.theirs, live.listenFrom}))),
-                    child: const Text('Offline languages…'),
-                  ),
-                  MenuItemButton(
-                    leadingIcon: const Icon(Icons.science_outlined),
-                    onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => TranslationBenchmark(
-                        engines: [engine, if (engine.name != engine.fallback.name) engine.fallback]))),
-                    child: const Text('Translation quality test…'),
-                  ),
-                  MenuItemButton(leadingIcon: const Icon(Icons.info_outline), onPressed: about, child: const Text('About')),
-                  MenuItemButton(leadingIcon: const Icon(Icons.exit_to_app), onPressed: exitApp, child: const Text('Exit')),
-                ],
-                child: const Text('Settings'),
-              ),
+              MenuItemButton(leadingIcon: const Icon(Icons.settings), onPressed: openSettings, child: const Text('Settings')),
             ],
           ),
         ],
