@@ -19,6 +19,9 @@ class Speaker {
   final FlutterTts _tts = FlutterTts();
   String? _lang;
   String? _voiceKey;
+
+  /// Each voice's own locale tag (`en-US`): the engine matches a voice by name *and* that exact tag.
+  final _locales = <String, String>{};
   Completer<void>? _done;
 
   /// The voice the person picked for a language, by name, or null for the phone's default.
@@ -38,9 +41,12 @@ class Speaker {
       final names = <String>{};
       for (final v in all) {
         if (v is! Map) continue;
-        final locale = '${v['locale'] ?? ''}'.replaceAll('_', '-').toLowerCase();
+        final raw = '${v['locale'] ?? ''}';
+        final locale = raw.replaceAll('_', '-').toLowerCase();
         final name = '${v['name'] ?? ''}';
-        if (name.isNotEmpty && (locale == code || locale.startsWith('$code-'))) names.add(name);
+        if (name.isEmpty) continue;
+        _locales[name] = raw;
+        if (locale == code || locale.startsWith('$code-')) names.add(name);
       }
       return names.toList()..sort();
     } catch (_) {
@@ -62,7 +68,8 @@ class Speaker {
     if (_voiceKey != key) {
       try {
         if (pick != null && pick.isNotEmpty) {
-          await _tts.setVoice({'name': pick, 'locale': code});
+          if (!_locales.containsKey(pick)) await voices(code);
+          await _tts.setVoice({'name': pick, 'locale': _locales[pick] ?? code});
         } else {
           await _tts.setLanguage(code); // back to the language's default voice
         }
