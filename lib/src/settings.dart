@@ -53,4 +53,8 @@ class Settings {
 
   bool get speak => _p.getBool('speak') ?? true;
   set speak(bool v) => _p.setBool('speak', v);
+
+  /// The phone voice picked for a language (its name), or '' for the phone's default.
+  String voiceFor(String code) => _p.getString('voice.$code') ?? '';
+  void setVoiceFor(String code, String name) => name.isEmpty ? _p.remove('voice.$code') : _p.setString('voice.$code', name);
 }

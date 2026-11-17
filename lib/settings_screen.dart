@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'src/model_store.dart';
 import 'src/models.dart';
+import 'src/languages.dart';
 import 'src/pipeline.dart';
 import 'src/settings.dart';
 
@@ -288,6 +289,79 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       );
 
+  /// A short sentence in each common language, to hear a voice before picking it.
+  static const _sample = {
+    'en': 'Hello, this is my voice.',
+    'he': 'שלום, זה הקול שלי.',
+    'es': 'Hola, esta es mi voz.',
+    'fr': 'Bonjour, voici ma voix.',
+    'de': 'Hallo, das ist meine Stimme.',
+    'it': 'Ciao, questa è la mia voce.',
+    'pt': 'Olá, esta é a minha voz.',
+    'ru': 'Привет, это мой голос.',
+    'ar': 'مرحبا، هذا صوتي.',
+    'tr': 'Merhaba, bu benim sesim.',
+    'zh': '你好，这是我的声音。',
+    'ja': 'こんにちは、これは私の声です。',
+  };
+
+  Widget _voiceRow(String code) {
+    final picked = s.voiceFor(code);
+    return ListTile(
+      leading: const Icon(Icons.record_voice_over_outlined),
+      title: Text(nameOf(code)),
+      subtitle: Text(picked.isEmpty ? 'Phone default' : picked),
+      trailing: IconButton(
+        tooltip: 'Hear it',
+        icon: const Icon(Icons.play_circle_outline),
+        onPressed: () => widget.live.speaker.say(_sample[code] ?? _sample['en']!, code),
+      ),
+      onTap: () => _pickVoice(code),
+    );
+  }
+
+  Future<void> _pickVoice(String code) async {
+    final speaker = widget.live.speaker;
+    final voices = await speaker.voices(code);
+    if (!mounted) return;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(c).size.height * 0.7),
+          child: RadioGroup<String>(
+            groupValue: s.voiceFor(code),
+            onChanged: (v) => Navigator.pop(c, v ?? ''),
+            child: ListView(shrinkWrap: true, children: [
+              ListTile(
+                title: Text('Voice for ${nameOf(code)}', style: Theme.of(c).textTheme.titleMedium),
+                subtitle: Text(voices.isEmpty
+                    ? 'The phone has no voice for this language. Install one in Android Settings › Text-to-speech output.'
+                    : '${voices.length} voice${voices.length == 1 ? '' : 's'} on this phone'),
+              ),
+              const RadioListTile<String>(value: '', title: Text('Phone default')),
+              for (final v in voices) RadioListTile<String>(value: v, title: Text(v, overflow: TextOverflow.ellipsis)),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (choice == null) return;
+    s.setVoiceFor(code, choice);
+    if (mounted) setState(() {});
+    await speaker.say(_sample[code] ?? _sample['en']!, code);
+  }
+
+  Widget _voices() {
+    final codes = {widget.live.mine, widget.live.theirs}.toList();
+    return _section(
+      'Voices',
+      [for (final c in codes) _voiceRow(c)],
+      hint: 'The voice that reads a translation aloud, per language. Tap to choose; the play button tries it.',
+    );
+  }
+
   Widget _listening() {
     final locked = a.isBusy();
     Widget toggle(String title, String note, bool value, ValueChanged<bool>? onChanged) =>
@@ -325,6 +399,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _speechModels(),
           _packs(),
+          _voices(),
           _languages(),
           _listening(),
           _app(),
