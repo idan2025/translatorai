@@ -6,6 +6,7 @@ import 'package:record/record.dart';
 import 'asr.dart';
 import 'languages.dart';
 import 'joiner.dart';
+import 'latest.dart';
 import 'lid.dart';
 import 'speaker.dart';
 import 'translator.dart';
@@ -155,6 +156,43 @@ class LiveTranslator extends ChangeNotifier {
   /// The words so far of the sentence being spoken ('' when none).
   String partial = '';
 
+  /// [partial] translated, so the other person reads along while you speak
+  /// (empty until the first piece is translated, or when translating it would
+  /// mean a download).
+  String partialTranslation = '';
+
+  /// Where a sentence being spoken now will be translated to, when known in advance.
+  ({String from, String to})? get _partialDirection {
+    final from = activeLanguage;
+    if (from == null) return null;
+    final to = mode == Mode.listen ? mine : (side == 'mine' ? theirs : mine);
+    return from == to ? null : (from: from, to: to);
+  }
+
+  void _setPartial(String t) {
+    partial = t;
+    if (t.isEmpty) {
+      partialTranslation = '';
+      _partialRunner.clear();
+    } else {
+      _translatePartial(t);
+    }
+    notifyListeners();
+  }
+
+  late final _partialRunner = LatestOnly<String>((t) async {
+    final d = _partialDirection;
+    if (d == null || !engine.supports(d.from) || !engine.supports(d.to)) return;
+    if (!await engine.isReady(d.from) || !await engine.isReady(d.to)) return; // would download: wait for the sentence
+    final out = await engine.translate(t, from: d.from, to: d.to);
+    if (partial == t || (partial.isNotEmpty && partial.startsWith(t))) {
+      partialTranslation = out;
+      notifyListeners();
+    }
+  });
+
+  void _translatePartial(String t) => _partialRunner.offer(t);
+
   /// Show [partial] while speaking (only where the language is known in advance).
   bool _partials = true;
   bool get showPartials => _partials;
@@ -163,7 +201,10 @@ class LiveTranslator extends ChangeNotifier {
     for (final e in _workers.entries) {
       e.value.setPartials(v && e.key != 'he');
     }
-    if (!v) partial = '';
+    if (!v) {
+      partial = '';
+      partialTranslation = '';
+    }
   }
 
   /// Loaded recognisers by key ('main', and 'he' when the Hebrew pack is installed).
@@ -239,8 +280,7 @@ class LiveTranslator extends ChangeNotifier {
       w.phases.listen((p) => _onPhase(key, p)),
       w.partialText.listen((t) {
         if (key != activeKey || t == partial) return;
-        partial = t;
-        notifyListeners();
+        _setPartial(t);
       }),
       w.errors.listen((e) {
         error = e;
@@ -518,8 +558,7 @@ class LiveTranslator extends ChangeNotifier {
   void _showHeld() {
     final t = _joiner.heldText;
     if (t == partial) return;
-    partial = t;
-    notifyListeners();
+    _setPartial(t);
   }
 
   /// Pieces that are ready: shown, translated and spoken, in order.

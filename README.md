@@ -28,7 +28,8 @@ download the models.
   then works with no connection.
 - The speech model loads when the app opens (the status line says when it is ready), stays
   loaded between turns, and the microphone stays warm between turns of a conversation.
-- **Words while you speak**: the sentence so far appears faded while you talk (Settings can turn it off).
+- **Words while you speak**: the sentence so far appears faded while you talk, with its translation
+  under it, so the other person reads along (Settings can turn it off).
 - **Hebrew speech pack** (Settings, 1 GB): ivrit.ai's Hebrew Whisper, used only when Hebrew is spoken.
 - **Hebrew translation pack** (Settings, 515 MB): Opus-MT Hebrew ⇄ English, more fluent than ML Kit;
   other pairs with Hebrew go through English (Hebrew → Russian = Opus-MT to English, then ML Kit).

@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:translatorai/src/latest.dart';
 import 'package:translatorai/src/glossary.dart';
 import 'package:translatorai/src/asr.dart';
 import 'package:translatorai/src/languages.dart';
@@ -19,6 +20,7 @@ import 'package:translatorai/src/pipeline.dart';
 
 void main() {
   glossaryTests();
+  latestTests();
   group('direction', () {
     final g = FakeGuesser({'pausa': [Guess('it', .6), Guess('es', .3)], 'buenos dias': [Guess('es', .9)]});
     Heard hr(String text, [String lang = '']) => Heard(text, 1, 1, language: lang);
@@ -415,5 +417,26 @@ void glossaryTests() {
       expect(applyGlossary('יש לי חשבון בנק', 'I have a bank account'), 'I have a bank account');
       expect(applyGlossary('יש עודף משקל', 'There is excess weight'), 'There is excess weight');
     });
+  });
+}
+
+void latestTests() {
+  test('words so far: one translation at a time, and only the newest waits', () async {
+    final ran = <String>[];
+    late LatestOnly<String> r;
+    r = LatestOnly<String>((v) async {
+      ran.add(v);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    final first = r.offer('a');
+    r.offer('a b');
+    r.offer('a b c'); // replaces "a b": that one is stale before it starts
+    await first;
+    expect(ran, ['a', 'a b c']);
+    r.offer('x');
+    r.clear(); // nothing was waiting; x runs since it was not waiting
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    expect(ran, ['a', 'a b c', 'x']);
+    expect(r.busy, isFalse);
   });
 }

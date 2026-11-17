@@ -21,6 +21,9 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.7.0: **translation while you speak** (plan item 3, streaming, first step): the words so far are
+  translated as they appear and shown under them, one piece at a time, newest only (`lib/src/latest.dart`),
+  never if it would download a model.
 - 0.6.1: Hebrew → English glossary (`lib/src/glossary.dart`): Opus-MT got 9 of 130 travel words wrong
   when said alone (כפית "spoon", החשבון "the account", מפתח "developer", קבלה "acceptance"…) though
   right inside sentences. A word said alone now gets its travel sense, and כפית is never a plain spoon.

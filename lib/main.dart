@@ -756,7 +756,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   MenuItemButton(
                     leadingIcon: Icon(live.showPartials ? Icons.check_box : Icons.check_box_outline_blank),
                     onPressed: () => setState(() => live.showPartials = widget.settings.partials = !live.showPartials),
-                    child: const Text('Show words while I speak'),
+                    child: const Text('Show words and their translation while I speak'),
                   ),
                   MenuItemButton(
                     leadingIcon: Icon(live.autoSpeaker ? Icons.check_box : Icons.check_box_outline_blank),
@@ -875,7 +875,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   padding: const EdgeInsets.all(16),
                   itemCount: live.lines.length + (live.partial.isNotEmpty ? 1 : 0),
                   itemBuilder: (_, i) => i == live.lines.length
-                      ? _PartialView(text: live.partial, left: live.mode == Mode.listen || live.side != 'mine')
+                      ? _PartialView(
+                          text: live.partial,
+                          translation: live.partialTranslation,
+                          left: live.mode == Mode.listen || live.side != 'mine')
                       : _LineView(
                     line: live.lines[i],
                     mine: live.mine,
@@ -1108,8 +1111,11 @@ class _BigTextState extends State<BigText> {
 
 /// The words so far of a sentence still being spoken: faded, until it is final.
 class _PartialView extends StatelessWidget {
-  const _PartialView({required this.text, required this.left});
+  const _PartialView({required this.text, required this.translation, required this.left});
   final String text;
+
+  /// The words so far, translated (empty until the first piece is).
+  final String translation;
   final bool left;
   @override
   Widget build(BuildContext context) {
@@ -1124,8 +1130,15 @@ class _PartialView extends StatelessWidget {
           border: Border.all(color: cs.outlineVariant),
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Text('${sentenceCase(text)} …',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant, fontStyle: FontStyle.italic)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Text('${sentenceCase(text)} …',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant, fontStyle: FontStyle.italic)),
+          if (translation.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('${sentenceCase(translation)} …',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(color: cs.onSurfaceVariant.withValues(alpha: 0.8))),
+          ],
+        ]),
       ),
     );
   }
