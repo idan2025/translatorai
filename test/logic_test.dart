@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:translatorai/src/glossary.dart';
 import 'package:translatorai/src/asr.dart';
 import 'package:translatorai/src/languages.dart';
 import 'package:translatorai/src/chrf.dart';
@@ -17,6 +18,7 @@ import 'package:translatorai/src/models.dart';
 import 'package:translatorai/src/pipeline.dart';
 
 void main() {
+  glossaryTests();
   group('direction', () {
     final g = FakeGuesser({'pausa': [Guess('it', .6), Guess('es', .3)], 'buenos dias': [Guess('es', .9)]});
     Heard hr(String text, [String lang = '']) => Heard(text, 1, 1, language: lang);
@@ -395,4 +397,23 @@ class FakeGuesser extends TextLanguageGuesser {
   final Map<String, List<Guess>> answers;
   @override
   Future<List<Guess>> guess(String text) async => answers[text] ?? const [];
+}
+
+void glossaryTests() {
+  group('glossary', () {
+    test('a word said alone gets its travel sense', () {
+      expect(applyGlossary('כפית', 'Spoon'), 'Teaspoon');
+      expect(applyGlossary('החשבון, בבקשה', 'The account, please.'), 'The bill, please.');
+      expect(applyGlossary('מפתח?', 'Developer?'), 'Key');
+      expect(applyGlossary('כרטיס הלוך חזור', 'Ticket Back'), 'Round-trip ticket');
+    });
+    test('inside a sentence only a one-sense word is swapped back', () {
+      expect(applyGlossary('תן לי כפית בבקשה', 'Give me a spoon please'), 'Give me a teaspoon please');
+      expect(applyGlossary('שתי כפיות', 'Two spoons'), 'Two teaspoons');
+      expect(applyGlossary('אפשר כפית סוכר?', 'Can I have a teaspoon of sugar?'), 'Can I have a teaspoon of sugar?');
+      expect(applyGlossary('תן לי כף', 'Give me a spoon'), 'Give me a spoon'); // כף is a spoon
+      expect(applyGlossary('יש לי חשבון בנק', 'I have a bank account'), 'I have a bank account');
+      expect(applyGlossary('יש עודף משקל', 'There is excess weight'), 'There is excess weight');
+    });
+  });
 }

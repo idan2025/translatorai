@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:isolate';
 
+import 'glossary.dart';
 import 'marian.dart';
 import 'models.dart';
 import 'translator.dart';
@@ -58,15 +59,23 @@ class PackEngine extends TranslationEngine {
     return (_worker ??= TranslateWorker()).translate(d, dir.substring(0, dir.lastIndexOf('/')), text);
   }
 
+  /// Into English, with the known-word corrections for the source language.
+  Future<String> _toEnglish(String text, String from) async {
+    final d = _direction(from, 'en');
+    final english = d != null ? await _run(d, text) : await fallback.translate(text, from: from, to: 'en');
+    return from == 'he' ? applyGlossary(text, english) : english;
+  }
+
   @override
   Future<String> translate(String text, {required String from, required String to}) async {
     if (from == to || text.trim().isEmpty) return text;
+    if (to == 'en') return _toEnglish(text, from);
     final direct = _direction(from, to);
     if (direct != null) return _run(direct, text);
-    if (from != 'en' && to != 'en') {
+    if (from != 'en') {
       final first = _direction(from, 'en'), second = _direction('en', to);
       if (first != null || second != null) {
-        final english = first != null ? await _run(first, text) : await fallback.translate(text, from: from, to: 'en');
+        final english = await _toEnglish(text, from);
         return second != null ? _run(second, english) : fallback.translate(english, from: 'en', to: to);
       }
     }

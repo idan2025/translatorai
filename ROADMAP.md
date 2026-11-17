@@ -21,6 +21,9 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.6.1: Hebrew → English glossary (`lib/src/glossary.dart`): Opus-MT got 9 of 130 travel words wrong
+  when said alone (כפית "spoon", החשבון "the account", מפתח "developer", קבלה "acceptance"…) though
+  right inside sentences. A word said alone now gets its travel sense, and כפית is never a plain spoon.
 - 0.6.0: **Hebrew translation pack** (Settings, 515 MB): Opus-MT tc-big he→en and opus-mt en→he,
   int8 ONNX, run by the app itself (`lib/src/ort.dart` binds the ONNX Runtime sherpa-onnx already
   ships; `lib/src/spm.dart` is a SentencePiece tokenizer, same ids as Python on 60/60 sentences;
