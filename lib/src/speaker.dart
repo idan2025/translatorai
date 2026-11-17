@@ -22,6 +22,23 @@ class Speaker {
 
   /// Each voice's own locale tag (`en-US`): the engine matches a voice by name *and* that exact tag.
   final _locales = <String, String>{};
+
+  /// Voices that need the internet to speak (the phone lists them even when their data is not installed).
+  final _network = <String>{};
+
+  /// What the engine said to the last voice choice, for the Settings screen to show.
+  String voiceStatus = '';
+
+  bool needsNetwork(String name) => _network.contains(name);
+
+  /// The speech engine the phone uses (e.g. `com.google.android.tts`).
+  Future<String> engineName() async {
+    try {
+      return '${await _tts.getDefaultEngine}';
+    } catch (_) {
+      return '';
+    }
+  }
   Completer<void>? _done;
 
   /// The voice the person picked for a language, by name, or null for the phone's default.
@@ -46,9 +63,15 @@ class Speaker {
         final name = '${v['name'] ?? ''}';
         if (name.isEmpty) continue;
         _locales[name] = raw;
+        if ('${v['network_required']}' == '1') {
+          _network.add(name);
+        } else {
+          _network.remove(name);
+        }
         if (locale == code || locale.startsWith('$code-')) names.add(name);
       }
-      return names.toList()..sort();
+      // voices that work offline first
+      return names.toList()..sort((a, b) => needsNetwork(a) == needsNetwork(b) ? a.compareTo(b) : (needsNetwork(a) ? 1 : -1));
     } catch (_) {
       return const [];
     }
@@ -69,9 +92,14 @@ class Speaker {
       try {
         if (pick != null && pick.isNotEmpty) {
           if (!_locales.containsKey(pick)) await voices(code);
-          await _tts.setVoice({'name': pick, 'locale': _locales[pick] ?? code});
+          final r = await _tts.setVoice({'name': pick, 'locale': _locales[pick] ?? code});
+          final ok = r == 1 || r == true;
+          voiceStatus = ok
+              ? '$pick (${_locales[pick] ?? code})${needsNetwork(pick) ? ' · needs internet' : ''}'
+              : 'the phone refused $pick (${_locales[pick] ?? code})';
         } else {
           await _tts.setLanguage(code); // back to the language's default voice
+          voiceStatus = 'phone default';
         }
       } catch (_) {}
       _voiceKey = key;

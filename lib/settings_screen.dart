@@ -323,6 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _pickVoice(String code) async {
     final speaker = widget.live.speaker;
     final voices = await speaker.voices(code);
+    final engine = await speaker.engineName();
     if (!mounted) return;
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -338,10 +339,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: Text('Voice for ${nameOf(code)}', style: Theme.of(c).textTheme.titleMedium),
                 subtitle: Text(voices.isEmpty
                     ? 'The phone has no voice for this language. Install one in Android Settings › Text-to-speech output.'
-                    : '${voices.length} voice${voices.length == 1 ? '' : 's'} on this phone'),
+                    : '${voices.length} voice${voices.length == 1 ? '' : 's'} on this phone · engine $engine'),
               ),
               const RadioListTile<String>(value: '', title: Text('Phone default')),
-              for (final v in voices) RadioListTile<String>(value: v, title: Text(v, overflow: TextOverflow.ellipsis)),
+              for (final v in voices)
+                RadioListTile<String>(
+                    value: v,
+                    title: Text(v, overflow: TextOverflow.ellipsis),
+                    subtitle: speaker.needsNetwork(v) ? const Text('needs internet') : null),
             ]),
           ),
         ),
@@ -351,6 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     s.setVoiceFor(code, choice);
     if (mounted) setState(() {});
     await speaker.say(_sample[code] ?? _sample['en']!, code);
+    if (mounted) _say('Speaking with: ${speaker.voiceStatus}');
   }
 
   Widget _voices() {

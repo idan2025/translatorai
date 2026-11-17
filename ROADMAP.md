@@ -21,6 +21,7 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.8.3: voice picker shows the speech engine, marks voices that need internet (listed first: offline ones) and says after a pick what the engine accepted (the user heard no difference between voices).
 - 0.8.2: fix: the picked voice was never applied (the engine matches a voice by name and its exact locale tag, `en-US`, and the app sent `en`).
 - 0.8.1: voice per language: Settings › Voices lists the phone's voices for your language and the translation's, with a play button; the choice is kept per language (`lib/src/speaker.dart`, `Speaker.preferred`). Phone default when none is picked.
 - 0.8.0: one Settings screen (`lib/settings_screen.dart`) instead of a long submenu: sections for speech
