@@ -4,7 +4,9 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.BatteryManager
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.core.content.FileProvider
@@ -34,6 +36,15 @@ class MainActivity : FlutterActivity() {
                     val info = ActivityManager.MemoryInfo()
                     (getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(info)
                     result.success(info.totalMem)
+                }
+                "powerState" -> {
+                    // why a phone may be running slowly: low battery, battery saver, heat
+                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    val bm = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+                    val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                    val charging = bm.isCharging
+                    val thermal = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) pm.currentThermalStatus else -1
+                    result.success(mapOf("battery" to level, "charging" to charging, "saver" to pm.isPowerSaveMode, "thermal" to thermal))
                 }
                 "openAppSettings" -> {
                     startActivity(

@@ -261,6 +261,38 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? preparing;
   bool _screenOn = false;
 
+  /// Why the last sentence took long, when the phone is slowed down on purpose or by heat:
+  /// shown so a slow sentence is not blamed on the app. Empty when nothing explains it.
+  String slowWhy = '';
+
+  Future<void> _checkSlow() async {
+    if (live.lines.isEmpty) return;
+    final h = live.lines.last.heard;
+    // writing took more than 2.5x as long as the speech lasted: slow for any model
+    if (h.seconds <= 0 || h.decodeMs / 1000 < 2.5 * h.seconds) {
+      if (slowWhy.isNotEmpty && mounted) setState(() => slowWhy = '');
+      return;
+    }
+    String why = '';
+    try {
+      final s = await _system.invokeMapMethod<String, dynamic>('powerState');
+      if (s != null) {
+        final battery = s['battery'] as int? ?? 100, charging = s['charging'] == true;
+        final thermal = s['thermal'] as int? ?? -1;
+        if (s['saver'] == true) {
+          why = 'Battery saver is on: Android slows the processor. Turn it off for faster translation.';
+        } else if (thermal >= 2) {
+          why = 'The phone is hot and slowing itself down. Let it cool, or take it out of its case.';
+        } else if (battery <= 15 && !charging) {
+          why = 'The battery is at $battery%: many phones slow down when it is this low. Charge it for faster translation.';
+        }
+      }
+    } catch (_) {
+      // no explanation available: say nothing
+    }
+    if (mounted && why != slowWhy) setState(() => slowWhy = why);
+  }
+
   /// The phone's memory in GB (0 = not known). The Hebrew pack needs about 2 GB free beside the main model.
   double ramGb = 0;
   int _lineCount = 0;
@@ -300,6 +332,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {});
       // follow new lines only, so a status change never yanks the list
       if (live.lines.length != _lineCount) {
+        _checkSlow();
         _lineCount = live.lines.length;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (scroll.hasClients) {
@@ -842,6 +875,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(width: 8),
               Flexible(child: Text('Downloading the $preparing translation model…')),
             ]),
+          ),
+        if (slowWhy.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Text(slowWhy, style: TextStyle(color: cs.tertiary)),
           ),
         if (live.behind)
           Padding(

@@ -21,6 +21,9 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.7.1: when a sentence takes more than 2.5x its length to write, the app says why if it can know:
+  battery saver on, phone hot (thermal status), battery under 15% and not charging. (A user's 2.4 s
+  sentence took 9.6 s at 2% battery.)
 - 0.7.0: **translation while you speak** (plan item 3, streaming, first step): the words so far are
   translated as they appear and shown under them, one piece at a time, newest only (`lib/src/latest.dart`),
   never if it would download a model.
