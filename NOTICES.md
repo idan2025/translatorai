@@ -8,7 +8,8 @@ TranslatorAI runs these models and engines on the phone. Each keeps its own lice
 | ivrit-ai/whisper-large-v3-turbo (Hebrew fine-tune of Whisper), converted by pantinor/whisper-large-v3-turbo-hebrew-sherpa | Hebrew speech pack | Apache License 2.0 |
 | Silero VAD | Finding where speech starts and ends | MIT, © Silero Team |
 | sherpa-onnx, ONNX Runtime | Running the speech and translation-pack models | Apache License 2.0 / MIT |
-| Helsinki-NLP opus-mt-tc-big-he-en (CC-BY 4.0) and opus-mt-en-he (Apache-2.0), by Jörg Tiedemann and the Language Technology Research Group, University of Helsinki; exported to ONNX and quantised to int8 for this app (release `models-mt-1`) | Hebrew translation pack | CC-BY 4.0 / Apache License 2.0 |
+| quickmt he-en and en-he (https://huggingface.co/quickmt), CC-BY 4.0; exported to ONNX and quantised to int8 for this app (release `models-mt-2`) | Hebrew translation pack | CC-BY 4.0 |
+| Helsinki-NLP opus-mt-tc-big-he-en (CC-BY 4.0) and opus-mt-en-he (Apache-2.0), by Jörg Tiedemann and the Language Technology Research Group, University of Helsinki; exported to ONNX and quantised to int8 for this app (release `models-mt-1`) | Older Hebrew translation pack (replaced when the new one is installed) | CC-BY 4.0 / Apache License 2.0 |
 | Google ML Kit (Translation, Language ID) | On-device translation and language identification | [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms) |
 | Google FLEURS sentences (60 sentences in Hebrew, English and Russian, used only by Settings › Translation quality test) | Measuring translation quality | CC-BY 4.0, © Google; see https://huggingface.co/datasets/google/fleurs |
 | Flutter and Dart packages | The app | BSD-3-Clause and similar; the full list is in the app under Settings › About › View licenses |

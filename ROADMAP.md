@@ -21,6 +21,16 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.9.0: **new Hebrew translation pack** (quickmt, CC-BY 4.0, 546 MB, replaces Opus-MT): FLEURS chrF
+  he→en 68.6 (was 68.5), **en→he 63.6 (was 57.6)**, 57 ms a sentence on desktop through the app's own code.
+  Exported from quickmt's eole weights to ONNX (plain graph: no masks, self-attention cache only), int8;
+  `lib/src/marian.dart` runs both layouts, `lib/src/spm.dart` got byte fallback (ids equal Python's on
+  emoji and symbols). The old pack keeps working until the new one is installed, then is deleted; a phone
+  that has it is offered the upgrade once. Translation is warmed when the app opens or the language changes
+  (first sentence no longer loads models). Glossary: names after "קוראים לי / שמי" (25 common names), חשבון
+  as "bill", מטען as "charger" next to a phone word, and en→he "שמי הוא" → "שמי". Tried and rejected on
+  the same sentences: Gemma 4 E2B/E4B (no gain, 3–6 s a sentence, 4.6–6.6 GB), Ozen v1 and whistle-he
+  Hebrew speech (WER 22.6% and 27.6% against the Hebrew pack's 17.7%; faster but less accurate).
 - 0.8.3: voice picker shows the speech engine, marks voices that need internet (listed first: offline ones) and says after a pick what the engine accepted (the user heard no difference between voices).
 - 0.8.2: fix: the picked voice was never applied (the engine matches a voice by name and its exact locale tag, `en-US`, and the app sent `en`).
 - 0.8.1: voice per language: Settings › Voices lists the phone's voices for your language and the translation's, with a play button; the choice is kept per language (`lib/src/speaker.dart`, `Speaker.preferred`). Phone default when none is picked.

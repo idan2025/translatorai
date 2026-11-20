@@ -47,6 +47,10 @@ class Settings {
   bool get mtOffered => _p.getBool('mtOffered') ?? false;
   set mtOffered(bool v) => _p.setBool('mtOffered', v);
 
+  /// The upgrade from the first Hebrew translation pack (Opus-MT) was offered.
+  bool get mtUpgradeOffered => _p.getBool('mtUpgradeOffered') ?? false;
+  set mtUpgradeOffered(bool v) => _p.setBool('mtUpgradeOffered', v);
+
   /// Show the words of a sentence while it is still being spoken.
   bool get partials => _p.getBool('partials') ?? true;
   set partials(bool v) => _p.setBool('partials', v);

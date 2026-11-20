@@ -311,7 +311,10 @@ class LiveTranslator extends ChangeNotifier {
   /// instant. Safe to call again: a load in progress is shared.
   Future<bool> preload() {
     final needed = neededKeys;
-    if (needed.every((k) => _workers[k]?.config.sameModel(configs[k]!) ?? false)) return Future.value(true);
+    if (needed.every((k) => _workers[k]?.config.sameModel(configs[k]!) ?? false)) {
+      _warmTranslation();
+      return Future.value(true);
+    }
     return _loading ??= () async {
       modelState = 'loading';
       notifyListeners();
@@ -329,9 +332,48 @@ class LiveTranslator extends ChangeNotifier {
       modelState = ok ? 'ready' : 'failed';
       _loading = null;
       notifyListeners();
+      if (ok) _warmTranslation();
       return ok;
     }();
   }
+
+  /// The language pair the translator was last warmed for ('' = none yet).
+  String _warmedPair = '';
+
+  /// Loads both translation directions and runs one real sentence through each,
+  /// so the first sentence anyone says does not pay for the model load, the
+  /// runtime's first-use buffers or ML Kit's first call. Never downloads: a
+  /// pair not on the phone is skipped. Once per pair.
+  void _warmTranslation() {
+    final pair = '$mine>$theirs>$listenFrom>$mode';
+    if (pair == _warmedPair) return;
+    _warmedPair = pair;
+    () async {
+      try {
+        final langs = {mine, if (mode == Mode.conversation) theirs, if (listenFrom.isNotEmpty) listenFrom};
+        for (final c in langs) {
+          if (engine.supports(c) && !await engine.isReady(c)) {
+            _warmedPair = ''; // a model arrives later: warm then
+            return;
+          }
+        }
+        final legs = mode == Mode.conversation
+            ? [(mine, theirs), (theirs, mine)]
+            : [if (listenFrom.isNotEmpty) (listenFrom, mine)];
+        for (final (from, to) in legs) {
+          if (from == to) continue;
+          await engine.translate(_sample[from] ?? 'Hello, how are you?', from: from, to: to);
+        }
+      } catch (_) {
+        _warmedPair = ''; // a warm-up must never become an error; try again next time
+      }
+    }();
+  }
+
+  static const _sample = <String, String>{
+    'he': 'שלום, איך אפשר לעזור לך היום? אני צריך כרטיס לרכבת.',
+    'en': 'Hello, how can I help you today? I need a train ticket.',
+  };
 
   /// A tap conversation keeps the microphone open between turns (no start-up
   /// lag on the next tap), feeding nothing to the model while no side is
@@ -420,14 +462,12 @@ class LiveTranslator extends ChangeNotifier {
       for (final c in pair) {
         if (engine.supports(c) && !await engine.isReady(c)) return; // would download: not a warm-up
       }
+      // the translation directions are warmed by _warmTranslation (from preload)
       if (mode == Mode.conversation) {
-        await engine.translate('Hello', from: mine, to: theirs);
-        await engine.translate('Hello', from: theirs, to: mine);
         await speaker.warm(theirs);
         await speaker.warm(mine);
       } else {
         await speaker.warm(mine);
-        if (listenFrom.isNotEmpty) await engine.translate('Hello', from: listenFrom, to: mine);
       }
     } catch (_) {} // a warm-up must never become an error
   }

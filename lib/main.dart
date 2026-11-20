@@ -36,8 +36,12 @@ Future<void> main() async {
         'Voice activity detection: Silero VAD, MIT License, Copyright (c) 2020-present Silero Team.');
     yield const LicenseEntryWithLineBreaks(['sherpa-onnx'],
         'Speech runtime: sherpa-onnx and ONNX Runtime, Apache License 2.0 and MIT License respectively.');
+    yield const LicenseEntryWithLineBreaks(['quickmt'],
+        'Hebrew translation pack: the quickmt he-en and en-he models (https://huggingface.co/quickmt), CC-BY 4.0 '
+        '(https://creativecommons.org/licenses/by/4.0/). Exported to ONNX and quantised to int8 for this app '
+        '(changes: format and weight precision only).');
     yield const LicenseEntryWithLineBreaks(['Opus-MT'],
-        'Hebrew translation pack: Helsinki-NLP opus-mt-tc-big-he-en (CC-BY 4.0, '
+        'Older Hebrew translation pack: Helsinki-NLP opus-mt-tc-big-he-en (CC-BY 4.0, '
         'https://creativecommons.org/licenses/by/4.0/) and opus-mt-en-he (Apache License 2.0), by Jörg Tiedemann and the '
         'Language Technology Research Group at the University of Helsinki, trained on OPUS data. Exported to ONNX and '
         'quantised to int8 for this app (changes: format and weight precision only).');
@@ -352,10 +356,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _system.invokeMethod<int>('totalMemory').then((b) {
       if (mounted && b != null) setState(() => ramGb = b / 1073741824);
     }).catchError((_) {});
+    retireOpusPack(); // an older translation pack leaves once the new one is here
     // load the speech model now, so the first tap does not wait for it
     refreshConfigs();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) live.preload();
+      if (!mounted) return;
+      live.preload();
+      offerPackUpgrade();
     });
     _prepare([live.mine, if (live.mode == Mode.conversation) live.theirs, if (live.listenFrom.isNotEmpty) live.listenFrom]);
   }
@@ -400,6 +407,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
 
   bool get hebrewPackInstalled => widget.store.hasAll(hebrewPack.files);
+  /// The first Hebrew translation pack (Opus-MT) keeps working until the new one
+  /// is on the phone; then its 515 MB go, and the translator reloads from the new files.
+  Future<void> retireOpusPack() async {
+    if (!widget.store.hasAll(hebrewTranslationPack.files) || !widget.store.hasAny(legacyOpusPack.files)) return;
+    await engine.unload();
+    await widget.store.deleteModel(legacyOpusPack.files, except: hebrewTranslationPack.files);
+  }
+
   bool get hebrewTranslationInstalled => widget.store.hasAll(hebrewTranslationPack.files);
 
   /// The app's translator: the installed translation packs, then ML Kit.
@@ -487,6 +502,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   /// Hebrew translation is more fluent with Opus-MT than with ML Kit: offer it once
   /// when Hebrew is chosen (it stays in Settings afterwards).
+  /// Once, for a phone that has the first Hebrew translation pack: the new one is
+  /// better (Hebrew written by the translator reads much more naturally).
+  Future<void> offerPackUpgrade() async {
+    if (widget.settings.mtUpgradeOffered || hebrewTranslationInstalled || !widget.store.hasAll(legacyOpusPack.files)) return;
+    widget.settings.mtUpgradeOffered = true;
+    final go = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Better Hebrew translation'),
+        content: Text('A new Hebrew translation pack is available: much more natural Hebrew, and it replaces the old '
+            'pack. It is ${(hebrewTranslationPack.bytes / 1e6).round()} MB; the old one (515 MB) is deleted afterwards. '
+            'Download it now, on Wi-Fi?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Later')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Download')),
+        ],
+      ),
+    );
+    if (go == true && mounted) await downloadTranslationPack();
+  }
+
   Future<void> offerTranslationPack() async {
     widget.settings.mtOffered = true;
     final go = await showDialog<bool>(
@@ -525,6 +561,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     try {
       await widget.store.ensure(hebrewTranslationPack.files, onProgress: (d, t) => progress.value = d / t);
+      await retireOpusPack();
+      live.preload();
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('$e')));
     } finally {
@@ -661,6 +699,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             widget.onUseModel(m);
           },
           packsChanged: () async {
+            await retireOpusPack();
             refreshConfigs();
             live.preload();
             if (mounted) setState(() {});

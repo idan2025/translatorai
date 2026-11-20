@@ -5,7 +5,14 @@ import 'dart:typed_data';
 import 'ort.dart';
 import 'spm.dart';
 
-/// One Opus-MT (Marian) translation direction, run with ONNX Runtime: an
+/// One translation direction of a pack, run with ONNX Runtime. Two graph layouts:
+/// Opus-MT's (Marian, exported by optimum: attention masks and a cross-attention
+/// cache) and the plain one of the quickmt pack (`cross_cache: false` in its
+/// config: no masks, the decoder recomputes cross attention from the encoder
+/// output, only the self-attention cache travels, source and target have their
+/// own vocabularies and no `</s>` ends the source). The Marian note follows.
+///
+/// An Opus-MT (Marian) direction is: an
 /// encoder and a decoder with its attention cache, int8. Greedy decoding:
 /// measured on 60 FLEURS sentences it scores within 0.2 chrF of the full
 /// PyTorch model with 4-beam search (he→en 68.7 vs 68.9, en→he 57.5 vs 57.7)
@@ -14,7 +21,7 @@ import 'spm.dart';
 /// Synchronous and heavy: run it off the UI thread ([TranslateWorker]).
 class MarianModel {
   MarianModel._(this._enc, this._dec, this._src, this._vocab, this._pieces, this._layers, this._heads, this._dim,
-      this._start, this._eos, this._pad, this._unk);
+      this._start, this._eos, this._pad, this._unk, this._plain, this._srcEos);
 
   /// Loads a direction from [dir], which holds `encoder.int8.onnx`,
   /// `decoder.int8.onnx`, `source.spm`, `vocab.json` and
@@ -23,7 +30,12 @@ class MarianModel {
     String f(String name) => '$dir/$prefix$name';
     final cfg = jsonDecode(File(f('config.json')).readAsStringSync()) as Map<String, dynamic>;
     final vocab = (jsonDecode(File(f('vocab.json')).readAsStringSync()) as Map<String, dynamic>).cast<String, int>();
-    final pieces = <int, String>{for (final e in vocab.entries) e.value: e.key};
+    // a pack with its own target vocabulary (quickmt) names it; Marian's one vocabulary serves both sides
+    final targetFile = File(f('target-vocab.json'));
+    final target = targetFile.existsSync()
+        ? (jsonDecode(targetFile.readAsStringSync()) as Map<String, dynamic>).cast<String, int>()
+        : vocab;
+    final pieces = <int, String>{for (final e in target.entries) e.value: e.key};
     final ort = Ort.instance;
     return MarianModel._(
       ort.load(f('encoder.int8.onnx'), threads: threads),
@@ -38,6 +50,8 @@ class MarianModel {
       cfg['eos_token_id'] as int,
       cfg['pad_token_id'] as int,
       vocab['<unk>'] ?? 1,
+      cfg['cross_cache'] == false,
+      cfg['source_eos'] != false,
     );
   }
 
@@ -47,11 +61,15 @@ class MarianModel {
   final Map<int, String> _pieces;
   final int _layers, _heads, _dim, _start, _eos, _pad, _unk;
 
-  /// The ids the encoder reads for [text], ending in `</s>`.
+  /// The plain graph layout (no masks, no cross-attention cache), and whether
+  /// the source ends in `</s>`.
+  final bool _plain, _srcEos;
+
+  /// The ids the encoder reads for [text], ending in `</s>` (Marian).
   List<int> encode(String text) {
     final ids = [for (final p in _src.encode(text)) _vocab[p] ?? _unk];
     // the model has 512 positions; a longer input (a very long monologue) is cut
-    return [...ids.length > 511 ? ids.sublist(0, 511) : ids, _eos];
+    return [...ids.length > 511 ? ids.sublist(0, 511) : ids, if (_srcEos) _eos];
   }
 
   /// Longest output, in tokens, for an input of [n] tokens: a runaway loop stops here.
@@ -62,20 +80,21 @@ class MarianModel {
     final ids = encode(text);
     final ort = Ort.instance;
     final input = ort.int64(ids, [1, ids.length]);
-    final mask = ort.int64(List.filled(ids.length, 1), [1, ids.length]);
-    final hidden = _enc.run({'input_ids': input, 'attention_mask': mask}, const ['last_hidden_state']).single;
+    final mask = _plain ? null : ort.int64(List.filled(ids.length, 1), [1, ids.length]);
+    final hidden = _enc.run({'input_ids': input, 'attention_mask': ?mask}, const ['last_hidden_state']).single;
     input.release();
+    // the caches that travel between steps: all four kinds (Marian) or the self-attention pair (plain)
+    final kinds = _plain ? const ['decoder.key', 'decoder.value'] : const ['decoder.key', 'decoder.value', 'encoder.key', 'encoder.value'];
 
     final empty = Float32List(0);
     final past = <String, OrtValue>{
       for (var l = 0; l < _layers; l++)
-        for (final k in const ['decoder.key', 'decoder.value', 'encoder.key', 'encoder.value'])
-          'past_key_values.$l.$k': ort.float32(empty, [1, _heads, 0, _dim]),
+        for (final k in kinds) 'past_key_values.$l.$k': ort.float32(empty, [1, _heads, 0, _dim]),
     };
     final outNames = <String>[
       'logits',
       for (var l = 0; l < _layers; l++)
-        for (final k in const ['decoder.key', 'decoder.value', 'encoder.key', 'encoder.value']) 'present.$l.$k',
+        for (final k in kinds) 'present.$l.$k',
     ];
     final out = <int>[];
     var last = _start;
@@ -83,16 +102,16 @@ class MarianModel {
       for (var step = 0; step < maxLength(ids.length); step++) {
         final first = step == 0;
         final tok = ort.int64([last], const [1, 1]);
-        final branch = ort.boolean(!first);
+        final branch = _plain ? null : ort.boolean(!first);
         final r = _dec.run({
           'input_ids': tok,
           'encoder_hidden_states': hidden,
-          'encoder_attention_mask': mask,
-          'use_cache_branch': branch,
+          'encoder_attention_mask': ?mask,
+          'use_cache_branch': ?branch,
           ...past,
         }, outNames);
         tok.release();
-        branch.release();
+        branch?.release();
         final logits = r[0].floats();
         final vocabSize = logits.length; // [1, 1, vocab]
         var best = -1;
@@ -124,7 +143,7 @@ class MarianModel {
         v.release();
       }
       hidden.release();
-      mask.release();
+      mask?.release();
     }
     return SentencePiece.decode([
       for (final id in out)

@@ -409,6 +409,23 @@ void glossaryTests() {
       expect(applyGlossary('מפתח?', 'Developer?'), 'Key');
       expect(applyGlossary('כרטיס הלוך חזור', 'Ticket Back'), 'Round-trip ticket');
     });
+    test('a name after "my name is" is spoken as a name, a bank account stays one', () {
+      expect(applyGlossary('קוראים לי עידן', 'They call me an age'), 'My name is Idan.');
+      expect(applyGlossary('שמי דני', 'My name is Dani'), 'My name is Dani.');
+      expect(applyGlossary('קוראים לי יורם', 'They call me Yoram'), 'They call me Yoram');
+      expect(applyGlossary('כמה החשבון יצא?', 'How much did the account come out?'), 'How much did the bill come out?');
+      expect(applyGlossary('אני צריך לפתוח חשבון בנק', 'I need to open a bank account'), 'I need to open a bank account');
+    });
+    test('a charger is a charger only next to a phone word', () {
+      expect(applyGlossary('אני צריך מטען לטלפון', 'I need luggage for the phone'), 'I need charger for the phone');
+      expect(applyGlossary('המטען שלי בטיסה', 'My luggage is on the flight'), 'My luggage is on the flight');
+      expect(applyGlossary('מטען', 'Luggage'), 'Luggage');
+    });
+    test('English into Hebrew: "my name is" reads as Hebrew and a known name is spelt right', () {
+      expect(applyHebrewGlossary('My name is Idan, nice to meet you.', 'שמי הוא אידן, נעים להכיר אותך.'), 'שמי עידן, נעים להכיר אותך.');
+      expect(applyHebrewGlossary('My name is Bob.', 'שמי הוא בוב.'), 'שמי בוב.');
+      expect(applyHebrewGlossary('Where is the station?', 'איפה התחנה?'), 'איפה התחנה?');
+    });
     test('inside a sentence only a one-sense word is swapped back', () {
       expect(applyGlossary('תן לי כפית בבקשה', 'Give me a spoon please'), 'Give me a teaspoon please');
       expect(applyGlossary('שתי כפיות', 'Two spoons'), 'Two teaspoons');

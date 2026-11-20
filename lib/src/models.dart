@@ -106,14 +106,16 @@ const hebrewPack = LanguagePack(
 const languagePacks = <LanguagePack>[hebrewPack];
 
 /// One translation direction of a [TranslationPack]: an Opus-MT model run by
-/// the app itself (`lib/src/marian.dart`), its files named `mt-<from>-<to>-…`.
+/// the app itself (`lib/src/marian.dart`), its files named `<tag>-<from>-<to>-…`
+/// (`mt` for Opus-MT, `mq` for quickmt).
 class TranslationDirection {
-  const TranslationDirection(this.from, this.to, this.files);
+  const TranslationDirection(this.from, this.to, this.files, {this.tag = 'mt'});
   final String from, to;
   final List<ModelFile> files;
+  final String tag;
 
   /// The file-name prefix the model's files share on the phone.
-  String get prefix => 'mt-$from-$to-';
+  String get prefix => '$tag-$from-$to-';
   int get bytes => files.fold(0, (a, f) => a + f.bytes);
 }
 
@@ -137,10 +139,12 @@ const _mt = 'https://github.com/idan2025/translatorai/releases/download/models-m
 
 ModelFile _mtFile(String d, String f, String sha, int bytes) => ModelFile('mt-$d-$f', '$_mt/mt-$d-$f', sha, bytes);
 
-final hebrewTranslationPack = TranslationPack(
-  'hebrew-mt',
-  'Hebrew translation pack',
-  'Opus-MT Hebrew ⇄ English · 515 MB · more fluent Hebrew translation, fully offline',
+/// The first Hebrew translation pack (0.6.0–0.8.3). Kept working for phones that
+/// have it until the quickmt pack replaces it (then its files are deleted).
+final legacyOpusPack = TranslationPack(
+  'hebrew-mt-opus',
+  'Hebrew translation pack (older)',
+  'Opus-MT Hebrew ⇄ English · 515 MB',
   'he',
   [
     TranslationDirection('he', 'en', [
@@ -160,7 +164,46 @@ final hebrewTranslationPack = TranslationPack(
   ],
 );
 
+const _mq = 'https://github.com/idan2025/translatorai/releases/download/models-mt-2';
+
+ModelFile _mqFile(String d, String f, String sha, int bytes) => ModelFile('mq-$d-$f', '$_mq/mq-$d-$f', sha, bytes);
+
+/// quickmt (CC-BY 4.0), Hebrew ⇄ English: an 8-layer encoder and a 2-layer decoder
+/// per direction, exported to ONNX and quantised to int8 (`lib/src/marian.dart`
+/// runs its plain graph layout). Hosted as assets of this project's release
+/// `models-mt-2`. FLEURS chrF, the same 60 sentences and greedy decoding as the
+/// Opus-MT numbers above: he→en 68.7 (Opus 68.5), en→he 63.9 (Opus 57.6).
+final hebrewTranslationPack = TranslationPack(
+  'hebrew-mt',
+  'Hebrew translation pack',
+  'quickmt Hebrew ⇄ English · 546 MB · much more fluent Hebrew, fully offline',
+  'he',
+  [
+    TranslationDirection('he', 'en', tag: 'mq', [
+      _mqFile('he-en', 'encoder.int8.onnx', '7c38520ad06539f70605d42121dc101243ca88b92c5406811f3b7ec944e97822', 154184503),
+      _mqFile('he-en', 'decoder.int8.onnx', 'f02bf4459dc41d1c393f26f952ebcc847738ba5d00858df446763284748d07ad', 119818091),
+      _mqFile('he-en', 'source.spm', '006e2e0f144ae9425cf7ff6b81eb25de0165da5bfa8d220dfb75203ad9ca4ee4', 882724),
+      _mqFile('he-en', 'vocab.json', '74035ad9552f3306e3192a862674993c597414c988e175bccf10652a8e3b4975', 632014),
+      _mqFile('he-en', 'target-vocab.json', '076d60936ea7796502ce62aad73ae395a6d1e8d25daae436cab3270b557bb814', 551967),
+      _mqFile('he-en', 'config.json', '8be22e1f4ea929f6d3441445541507ffe4c5de5cc3f8ed6881dc413d3938038d', 248),
+    ]),
+    TranslationDirection('en', 'he', tag: 'mq', [
+      _mqFile('en-he', 'encoder.int8.onnx', '011a028e5d0f502354dd2b72743d8286c3b49c4b96d6996fccaf417c938c3911', 154184503),
+      _mqFile('en-he', 'decoder.int8.onnx', 'd2220325fd3efce6ad251b26007f17b8404a9880c61b76eb21ce6893c7ed2b03', 119818091),
+      _mqFile('en-he', 'source.spm', '38aadfae3dd591032d6e46ddcc38a7ec706e1f1429236ce9266882dba6c3ce83', 802664),
+      _mqFile('en-he', 'vocab.json', '076d60936ea7796502ce62aad73ae395a6d1e8d25daae436cab3270b557bb814', 551967),
+      _mqFile('en-he', 'target-vocab.json', '74035ad9552f3306e3192a862674993c597414c988e175bccf10652a8e3b4975', 632014),
+      _mqFile('en-he', 'config.json', '106da1915d97b8bfd7f560520ef1157588803353cfecfb627f130a7682e6699e', 248),
+    ]),
+  ],
+);
+
+/// The packs the app offers. [legacyOpusPack] is not offered any more, only used
+/// while it is on the phone and the new pack is not.
 final translationPacks = <TranslationPack>[hebrewTranslationPack];
+
+/// Every pack the translator may use, the newest first.
+final usableTranslationPacks = <TranslationPack>[hebrewTranslationPack, legacyOpusPack];
 
 /// The model used when nothing is chosen yet (or the chosen id is gone): Standard.
 SpeechModel speechModelById(String id) =>
@@ -171,5 +214,5 @@ final List<ModelFile> allModelFiles = [
   vadModel,
   for (final m in speechModels) ...m.files,
   for (final k in languagePacks) ...k.files,
-  for (final t in translationPacks) ...t.files,
+  for (final t in usableTranslationPacks) ...t.files,
 ];

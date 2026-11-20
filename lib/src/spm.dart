@@ -13,6 +13,7 @@ import 'dart:typed_data';
 class SentencePiece {
   SentencePiece._(this._pieces, this._scores, this._types, this._addDummyPrefix, this._removeExtraSpaces) {
     for (var i = 0; i < _pieces.length; i++) {
+      if (_types[i] == _byte) _hasBytes = true;
       if (_types[i] == _normal || _types[i] == _userDefined) {
         _index[_pieces[i]] = i;
         final n = _pieces[i].runes.length;
@@ -26,7 +27,7 @@ class SentencePiece {
     _unkScore = min - 10;
   }
 
-  static const _normal = 1, _unknown = 2, _userDefined = 4;
+  static const _normal = 1, _unknown = 2, _userDefined = 4, _byte = 6;
 
   final List<String> _pieces;
   final List<double> _scores;
@@ -34,6 +35,9 @@ class SentencePiece {
   final bool _addDummyPrefix, _removeExtraSpaces;
   final _index = <String, int>{};
   var _maxLen = 1;
+
+  /// The model writes a character it has no piece for as its UTF-8 bytes (`<0xNN>`).
+  var _hasBytes = false;
   late final double _unkScore;
 
   static const space = '▁'; // ▁
@@ -124,7 +128,13 @@ class SentencePiece {
     }
     final out = <String>[];
     for (var k = n; k > 0; k = from[k]) {
-      out.add(chars.sublist(from[k], k).join());
+      final piece = chars.sublist(from[k], k).join();
+      if (_hasBytes && !_index.containsKey(piece)) {
+        // byte fallback, in reading order once the list is reversed
+        out.addAll([for (final b in utf8.encode(piece).reversed) '<0x${b.toRadixString(16).toUpperCase().padLeft(2, '0')}>']);
+      } else {
+        out.add(piece);
+      }
     }
     return out.reversed.toList();
   }

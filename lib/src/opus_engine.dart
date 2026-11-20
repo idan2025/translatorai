@@ -12,7 +12,7 @@ import 'translator.dart';
 /// Opus-MT Hebrew → English, then ML Kit English → Russian.
 class PackEngine extends TranslationEngine {
   PackEngine({required this.fallback, required this.installed, required this.pathOf, List<TranslationPack>? packs})
-      : packs = packs ?? translationPacks;
+      : packs = packs ?? usableTranslationPacks;
 
   final TranslationEngine fallback;
   final List<TranslationPack> packs;
@@ -40,7 +40,7 @@ class PackEngine extends TranslationEngine {
   bool _packCovers(String code) => packs.any((p) => p.language == code && p.directions.every(installed));
 
   @override
-  String get name => packs.any((p) => p.directions.any(installed)) ? 'Opus-MT pack + ${fallback.name}' : fallback.name;
+  String get name => packs.any((p) => p.directions.any(installed)) ? 'Translation pack + ${fallback.name}' : fallback.name;
 
   @override
   Set<String> get languages => fallback.languages;
@@ -54,9 +54,10 @@ class PackEngine extends TranslationEngine {
     await fallback.prepare(code);
   }
 
-  Future<String> _run(TranslationDirection d, String text) {
+  Future<String> _run(TranslationDirection d, String text) async {
     final dir = pathOf(d.files.first.name);
-    return (_worker ??= TranslateWorker()).translate(d, dir.substring(0, dir.lastIndexOf('/')), text);
+    final out = await (_worker ??= TranslateWorker()).translate(d, dir.substring(0, dir.lastIndexOf('/')), text);
+    return d.from == 'en' && d.to == 'he' ? applyHebrewGlossary(text, out) : out;
   }
 
   /// Into English, with the known-word corrections for the source language.

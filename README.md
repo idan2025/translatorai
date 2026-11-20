@@ -31,8 +31,8 @@ download the models.
 - **Words while you speak**: the sentence so far appears faded while you talk, with its translation
   under it, so the other person reads along (Settings can turn it off).
 - **Hebrew speech pack** (Settings, 1 GB): ivrit.ai's Hebrew Whisper, used only when Hebrew is spoken.
-- **Hebrew translation pack** (Settings, 515 MB): Opus-MT Hebrew ⇄ English, more fluent than ML Kit;
-  other pairs with Hebrew go through English (Hebrew → Russian = Opus-MT to English, then ML Kit).
+- **Hebrew translation pack** (Settings, 546 MB): quickmt Hebrew ⇄ English, much more fluent than ML Kit;
+  other pairs with Hebrew go through English (Hebrew → Russian = quickmt to English, then ML Kit).
 - The screen stays on while listening; the microphone is released when the app leaves the screen.
 
 ## How it works
@@ -47,7 +47,7 @@ microphone (16 kHz) → Silero VAD → Whisper, language-controlled → translat
 | Voice activity | Silero VAD | 0.6 MB | all |
 | Speech to text | OpenAI Whisper base (Fast), small (Standard) or large-v3-turbo (Best), int8, via [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) | 160 MB / 375 MB / 1 GB | 99 |
 | Which language | Whisper's own guess, checked against the alphabet, then Google ML Kit language identification | built in | 100+ |
-| Translation | Google ML Kit on-device translation; Opus-MT (Marian, int8, run by the app through ONNX Runtime) where a translation pack is installed | ~30 MB per language; Hebrew pack 515 MB | 59, any to any |
+| Translation | Google ML Kit on-device translation; quickmt (transformer, int8, run by the app through ONNX Runtime) where the Hebrew translation pack is installed | ~30 MB per language; Hebrew pack 546 MB | 59, any to any |
 | Voice | the phone's own text-to-speech | built in | whatever voices the phone has |
 
 **How the language is kept right.** The speech model is told which languages
