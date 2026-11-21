@@ -456,4 +456,34 @@ void latestTests() {
     expect(ran, ['a', 'a b c', 'x']);
     expect(r.busy, isFalse);
   });
+
+  test('a woman speaking gets the feminine forms after "אני", and a man or unknown speaker is untouched', () {
+    expect(applyHebrewGlossary('I am tired', 'אני עייף', gender: 'f'), 'אני עייפה');
+    expect(applyHebrewGlossary('I am very tired', 'אני מאוד עייף', gender: 'f'), 'אני מאוד עייפה'); // one adverb may sit between
+    expect(applyHebrewGlossary('I do not understand', 'אני לא מבין', gender: 'f'), 'אני לא מבינה');
+    expect(applyHebrewGlossary('I am going to the hotel', 'אני הולך למלון', gender: 'f'), 'אני הולכת למלון');
+    expect(applyHebrewGlossary('I want water', 'אני רוצה מים', gender: 'f'), 'אני רוצה מים'); // same for both
+    expect(applyHebrewGlossary('He is tired', 'הוא עייף', gender: 'f'), 'הוא עייף'); // only the speaker
+    expect(applyHebrewGlossary('I am tired', 'אני עייף', gender: 'm'), 'אני עייף');
+    expect(applyHebrewGlossary('I am tired', 'אני עייף'), 'אני עייף');
+    expect(feminizeFirstPerson('ואני צריך עזרה, אני לא יודע'), 'ואני צריכה עזרה, אני לא יודעת');
+  });
+
+  test('a man speaking gets the masculine forms the model sometimes turns feminine', () {
+    expect(applyHebrewGlossary('I am vegetarian', 'אני צמחונית', gender: 'm'), 'אני צמחוני');
+    expect(applyHebrewGlossary('I am tired', 'אני עייפה', gender: 'm'), 'אני עייף');
+    expect(applyHebrewGlossary('I am tired', 'אני עייפה'), 'אני עייפה'); // unknown: left as the model wrote it
+  });
+
+  test('a word said alone is answered from the word list, and a stutter is cut', () {
+    expect(applyGlossary('טיסה', 'Flight Flight Flight'), 'Flight');
+    expect(applyGlossary('המטוס', 'The Plane'), 'The airplane');
+    expect(applyGlossary('תחנת דלק', 'The Gas Station'), 'Gas station');
+    expect(applyGlossary('תודה', 'Thank you very much.'), 'Thank you');
+    expect(applyGlossary('בבקשה', 'Please Please Please'), 'Please.');
+    expect(applyGlossary('מים, בבקשה', 'Water and Water'), 'Water, please.');
+    expect(applyGlossary('רציף', 'the Continuous Continuous Continuous'), 'Platform');
+    expect(applyGlossary('שוק גדול', 'Market Market Market'), 'Market'); // a stutter outside the list
+    expect(applyGlossary('אני רוצה שוק לילה', 'I want a night market.'), 'I want a night market.');
+  });
 }

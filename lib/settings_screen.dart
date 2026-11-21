@@ -381,6 +381,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               await a.settle();
               setState(() => widget.live.autoSpeaker = s.autoSpeaker = v);
             }),
+      if (widget.live.mine == 'he' || widget.live.theirs == 'he')
+        ListTile(
+          title: const Text('I speak Hebrew as'),
+          subtitle: const Text('Hebrew you say aloud for a woman: "אני עייפה", not "אני עייף".'),
+          trailing: DropdownButton<String>(
+            value: s.gender,
+            items: const [
+              DropdownMenuItem(value: '', child: Text('Not set')),
+              DropdownMenuItem(value: 'f', child: Text('A woman')),
+              DropdownMenuItem(value: 'm', child: Text('A man')),
+            ],
+            onChanged: (v) => setState(() => s.gender = v ?? ''),
+          ),
+        ),
       toggle('Use the GPU', 'Experimental. Turns itself off if it crashes.', s.accel, locked ? null : (v) => setState(() => s.accel = v)),
     ]);
   }

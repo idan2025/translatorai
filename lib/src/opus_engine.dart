@@ -11,10 +11,13 @@ import 'translator.dart';
 /// pack's language on one side only goes through English: Hebrew → Russian is
 /// Opus-MT Hebrew → English, then ML Kit English → Russian.
 class PackEngine extends TranslationEngine {
-  PackEngine({required this.fallback, required this.installed, required this.pathOf, List<TranslationPack>? packs})
+  PackEngine({required this.fallback, required this.installed, required this.pathOf, List<TranslationPack>? packs, this.speakerGender})
       : packs = packs ?? usableTranslationPacks;
 
   final TranslationEngine fallback;
+
+  /// The speaker's gender for Hebrew output: 'f', 'm' or '' (unknown: the model's masculine).
+  final String Function()? speakerGender;
   final List<TranslationPack> packs;
 
   /// Whether every file of a direction is on the phone.
@@ -57,7 +60,7 @@ class PackEngine extends TranslationEngine {
   Future<String> _run(TranslationDirection d, String text) async {
     final dir = pathOf(d.files.first.name);
     final out = await (_worker ??= TranslateWorker()).translate(d, dir.substring(0, dir.lastIndexOf('/')), text);
-    return d.from == 'en' && d.to == 'he' ? applyHebrewGlossary(text, out) : out;
+    return d.from == 'en' && d.to == 'he' ? applyHebrewGlossary(text, out, gender: speakerGender?.call() ?? '') : out;
   }
 
   /// Into English, with the known-word corrections for the source language.

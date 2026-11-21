@@ -21,6 +21,7 @@
 - Back to Whisper (small and turbo), now told which languages are in play:
   fixes the mixed-alphabet and romanised output seen with Omnilingual on a phone.
 - Loop and repeat filtering for Whisper's noise hallucinations.
+- 0.9.1: **speaker gender** for Hebrew output (Settings → "I speak Hebrew as": "אני עייפה" / "אני עייף"; the model mixed them), **a word said alone** answered from a 200-word travel list (the model answered "Flight Flight Flight" for 1 word in 2), stutter cut on short phrases.
 - 0.9.0: **new Hebrew translation pack** (quickmt, CC-BY 4.0, 546 MB, replaces Opus-MT): FLEURS chrF
   he→en 68.6 (was 68.5), **en→he 63.6 (was 57.6)**, 57 ms a sentence on desktop through the app's own code.
   Exported from quickmt's eole weights to ONNX (plain graph: no masks, self-attention cache only), int8;

@@ -309,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     final s = widget.settings;
-    engine = PackEngine(fallback: MlKitEngine(), installed: (d) => widget.store.hasAll(d.files), pathOf: widget.store.pathOf);
+    engine = PackEngine(fallback: MlKitEngine(), installed: (d) => widget.store.hasAll(d.files), pathOf: widget.store.pathOf, speakerGender: () => s.gender);
     live = LiveTranslator(
         engine: engine,
         speaker: Speaker()..preferred = (c) => s.voiceFor(c).isEmpty ? null : s.voiceFor(c),

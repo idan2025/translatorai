@@ -51,6 +51,10 @@ class Settings {
   bool get mtUpgradeOffered => _p.getBool('mtUpgradeOffered') ?? false;
   set mtUpgradeOffered(bool v) => _p.setBool('mtUpgradeOffered', v);
 
+  /// The speaker's gender for Hebrew output ('f', 'm' or '' unknown): "אני עייף" or "אני עייפה".
+  String get gender => _p.getString('gender') ?? '';
+  set gender(String v) => _p.setString('gender', v);
+
   /// Show the words of a sentence while it is still being spoken.
   bool get partials => _p.getBool('partials') ?? true;
   set partials(bool v) => _p.setBool('partials', v);

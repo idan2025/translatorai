@@ -1,3 +1,5 @@
+import 'words.dart';
+
 /// Corrections for words a translation model is known to get wrong, found by
 /// running travel vocabulary through it (Opus-MT Hebrew → English, 2026-11-17:
 /// 9 of 130 travel words wrong on their own, almost all right inside a sentence).
@@ -86,7 +88,10 @@ String applyGlossary(String source, String translation, {List<GlossaryEntry> ent
       }
     }
   }
-  var out = translation;
+  if (s.isEmpty && please) return 'Please.';
+  final word = _wordAlone(s);
+  if (word != null) return '${word[0].toUpperCase()}${word.substring(1)}${please ? ', please.' : ''}';
+  var out = _collapseRepeats(translation, source);
   for (final e in entries) {
     if (e.swaps.isEmpty) continue;
     final said = e.terms.any((t) => RegExp('(?<![$_letters])[והבלמשכ]{0,3}${RegExp.escape(t)}(?![$_letters])').hasMatch(source));
@@ -104,6 +109,27 @@ String applyGlossary(String source, String translation, {List<GlossaryEntry> ent
   return out;
 }
 
+/// The word from [hebrewWords] when [s] is exactly one ("מטוס", "המטוס" → "the airplane").
+String? _wordAlone(String s) {
+  s = s.replaceAll(RegExp('[\'׳`]'), '');
+  final plain = hebrewWords[s];
+  if (plain != null) return plain;
+  if (s.startsWith('ה')) {
+    final w = hebrewWords[s.substring(1)];
+    if (w != null) return 'the $w';
+  }
+  return null;
+}
+
+/// A short utterance the model answers with a stutter ("Flight Flight Flight", "Water and
+/// Water"): the repeat is dropped. Only for sources of up to three words.
+String _collapseRepeats(String out, String source) {
+  if (source.trim().split(RegExp(r'\s+')).length > 3) return out;
+  var t = out;
+  t = t.replaceAllMapped(RegExp(r'\b(\w[\w\x27-]*)(?:\s+(?:and|of|in|at|to|for)?\s*\1\b)+', caseSensitive: false), (m) => m[1]!);
+  return t;
+}
+
 final _myNameIs = RegExp(r'\bmy name is ([A-Za-z]+)\b', caseSensitive: false);
 final _shmiHu = RegExp(r'שמי (?:הוא|היא) ');
 
@@ -111,8 +137,10 @@ final _shmiHu = RegExp(r'שמי (?:הוא|היא) ');
 /// writes "My name is Idan" as "שמי הוא אידן" (a word-for-word "is", and the
 /// name spelt from its sound). "שמי הוא" becomes "שמי", and a name from
 /// [hebrewNames] gets its Hebrew spelling.
-String applyHebrewGlossary(String source, String translation) {
+String applyHebrewGlossary(String source, String translation, {String gender = ''}) {
   var out = translation.replaceAll(_shmiHu, 'שמי ');
+  if (gender == 'f') out = feminizeFirstPerson(out);
+  if (gender == 'm') out = masculinizeFirstPerson(out);
   final m = _myNameIs.firstMatch(source);
   if (m != null) {
     final latin = m.group(1)!.toLowerCase();
@@ -125,3 +153,41 @@ String applyHebrewGlossary(String source, String translation) {
   }
   return out;
 }
+
+/// Present-tense words that change for a woman speaking: masculine → feminine.
+/// The models write the masculine ("אני עייף"); the past tense ("הלכתי") and
+/// verbs like "רוצה" are the same for both and are not listed. Only words that
+/// are only ever masculine after "אני" are here, so nothing is changed by guess.
+const feminineForms = <String, String>{
+  'עייף': 'עייפה', 'רעב': 'רעבה', 'צמא': 'צמאה', 'מוכן': 'מוכנה', 'בטוח': 'בטוחה', 'שמח': 'שמחה',
+  'אבוד': 'אבודה', 'מבולבל': 'מבולבלת', 'עצבני': 'עצבנית', 'מבין': 'מבינה',
+  'צריך': 'צריכה', 'יכול': 'יכולה', 'מעדיף': 'מעדיפה', 'מרגיש': 'מרגישה', 'מזמין': 'מזמינה',
+  'חייב': 'חייבת', 'הולך': 'הולכת', 'יודע': 'יודעת', 'מחפש': 'מחפשת', 'מתכוון': 'מתכוונת',
+  'אוהב': 'אוהבת', 'מדבר': 'מדברת', 'לומד': 'לומדת', 'נוסע': 'נוסעת', 'מתגעגע': 'מתגעגעת',
+  'מצטער': 'מצטערת', 'עובד': 'עובדת', 'מתכנן': 'מתכננת', 'שומע': 'שומעת', 'מאחר': 'מאחרת',
+  'גר': 'גרה', 'בא': 'באה', 'תייר': 'תיירת', 'תושב': 'תושבת', 'סטודנט': 'סטודנטית',
+  'מתחיל': 'מתחילה', 'מסיים': 'מסיימת', 'משלם': 'משלמת', 'מתקשר': 'מתקשרת', 'שוכח': 'שוכחת',
+  'זוכר': 'זוכרת', 'מקבל': 'מקבלת', 'נותן': 'נותנת', 'לוקח': 'לוקחת', 'חושב': 'חושבת', 'אומר': 'אומרת',
+  'נהנה': 'נהנית', 'פוחד': 'פוחדת', 'מפחד': 'מפחדת',
+  'מעוניין': 'מעוניינת', 'נשוי': 'נשואה', 'רווק': 'רווקה', 'מודאג': 'מודאגת', 'עסוק': 'עסוקה',
+  'אלרגי': 'אלרגית', 'צמחוני': 'צמחונית', 'טבעוני': 'טבעונית',
+};
+
+final _iVerb = RegExp(
+    r'(?<![א-ת])([ושכלמב]?אני)((?:\s+(?:לא|גם|כבר|ממש|מאוד|עכשיו|תמיד|פשוט|עדיין))?)\s+([א-ת]+)(?![א-ת])');
+
+/// "אני עייף" → "אני עייפה": the speaker is a woman, so the words that follow
+/// "אני" (one adverb allowed between) take the feminine form from [feminineForms].
+String feminizeFirstPerson(String text) => text.replaceAllMapped(_iVerb, (m) {
+      final f = feminineForms[m[3]];
+      return f == null ? m[0]! : '${m[1]}${m[2]} $f';
+    });
+
+final _masculineForms = {for (final e in feminineForms.entries) if (e.key != e.value) e.value: e.key};
+
+/// The other way: the model sometimes writes the feminine ("אני עייפה", "אני צמחונית")
+/// for a man, so a speaker who said he is a man gets the masculine forms.
+String masculinizeFirstPerson(String text) => text.replaceAllMapped(_iVerb, (m) {
+      final f = _masculineForms[m[3]];
+      return f == null ? m[0]! : '${m[1]}${m[2]} $f';
+    });
